@@ -1,0 +1,119 @@
+# Watchbill
+
+**A plain-text ledger protocol for AI agent crews: many agent sessions — and one human —
+sharing a single working tree for months.**
+
+> A *watchbill* is the roster that assigns a ship's crew to their watches — who is on duty,
+> for which hours, answerable to the officer of the deck. This one is for AI agents.
+
+Plain markdown and git. A few small scripts. No server, no database, no vendor, no account.
+Every rule in it exists because we hit the failure it prevents.
+
+From [Sovereign Labs AU](https://sovereignlabs.com.au). Licensed Apache-2.0.
+
+---
+
+## The problem
+
+Run more than one autonomous agent against a shared body of work and you get three failure
+modes, reliably:
+
+1. **Collision** — two agents edit the same thing and silently clobber each other. Neither
+   notices. You find out later, from the wreckage.
+2. **Encroachment** — an agent wanders into work that was already owned, because nothing said
+   so anywhere it would look.
+3. **Unseen stalls** — an agent dies or walks away holding work, and nobody notices for days;
+   its ownership just sits there, stale and invisible.
+
+A rule ("don't step on each other") doesn't fix this — it relies on perfect memory across
+context windows that get compacted and sessions that get restored. The fix is **visible
+state**, **time-bounded ownership**, and **a live pulse**, so the safe path is the easy path
+and violations *show up* instead of hiding.
+
+## How it works
+
+Five parts. Four are files in your repo; the fifth is the one channel that deliberately
+keeps no state.
+
+| Part | What it is |
+|---|---|
+| `CLAIMS.md` | Who owns which track, on a **time-bounded lease** that expires visibly. Claim before you work; renew while working; release when done. Takeover happens on the Operator's word or not at all. |
+| `DIARY.md` | The shared record: a live `## NOW` (heartbeat-stamped, stale-flagged after 72 h) plus an append-only `## Log` that is **never rewritten**. Wins every conflict. |
+| `notebooks/` | One private task-head per session: objectives written **before** work starts. At task end it must fully reconcile into the diary — then it is deleted, never hoarded. |
+| `INDEX.md` | The front door: pointers only, no data of its own. |
+| *the relay* | Ephemeral agent-to-agent messages: work orders, receipts, handbacks. **Carries work, never truth** — nothing is true until an owning agent writes it into a ledger. |
+
+Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board —
+each shipped with tests that prove it can **fail** (see `tests/fixtures/`).
+
+**Truth runs vertically and stays; messages run horizontally and vanish.**
+
+## The two roles
+
+- **The Operator** (the human): sole authority to terminate long work, spend money, publish
+  anything, or make anything public. Names owners; settles every decision-class conflict.
+- **Agents**: any number of AI sessions, from any vendor, possibly several at once. They
+  build, measure, and advise. **No agent pushes, publishes, or spends on its own say-so.**
+  Facts they verify; decisions they escalate.
+
+## What this deliberately does not do
+
+**It does not police. It makes violations visible.**
+
+A determined or broken agent can ignore a markdown file — the same way a determined
+developer can force-push over your history. We will not pretend otherwise, and you should
+distrust any coordination tool that does.
+
+What the protocol buys is different, and in practice it is enough: ownership you can *see*,
+leases that expire *visibly*, a log that cannot be quietly rewritten, checkers that flag
+what drifted, and a guard hook that blocks the destructive-operation cases it can reach.
+When something slips anyway, the append-only record means you can reconstruct exactly what
+happened — which is how we once rebuilt a lost artifact months after the code that made it
+was deleted: a three-month-old diary entry that no process was allowed to erase was a key
+witness to the reconstruction.
+
+## Proven in use, not designed on a whiteboard
+
+This protocol was extracted from a working AI research operation, not invented for release.
+
+- **~90 days** of one human operator + concurrent agent sessions (several at once, more
+  than one vendor) sharing a single repository in continuous operation.
+- **One audit day**: a scheduled self-audit filed 23 findings; eight were closed the same
+  day — each by the agent that owned the surface, routed over the relay, receipts verified
+  by the auditor. Zero collisions.
+- **One recovery**: a lost artifact was reconstructed months after the code that produced
+  it was deleted — a months-old diary entry describing that code, which could not be
+  rewritten, served as a key witness alongside two independent lines of evidence. The
+  append-only rule acting as forensics.
+- **Two traps → fixtures**: the audit found the ownership guard silently disarmed by a
+  formatting quirk, and the checker blind to a whole table. Both are now shipped test
+  fixtures: the broken cases this repo must always catch.
+
+## Quickstart
+
+1. Copy `templates/` into your repo (`CLAIMS.md`, `DIARY.md`, `INDEX.md`, `notebooks/`)
+   and the `scripts/` directory. Everything is plain text; read all of it first — it's short.
+2. Install the hooks: `./install_hooks.sh`. Per-clone, one command.
+3. Run the shipped tests: `python3 -m pytest tests/`. **Including the must-fail fixtures** —
+   if the broken-lease fixture doesn't fail, stop: your install can't catch what it exists
+   to catch.
+4. Have your first agent session read `PROTOCOL.md`, claim a track in `CLAIMS.md`, and open
+   a notebook. The ritual does the rest.
+
+## How it relates to what exists
+
+Most pieces here have public cousins — agent memory banks remember across sessions, agent
+mail servers deliver messages, agent issue trackers queue work, spec-first frameworks put
+the plan before the artifact. All good tools; most need a server, a database, or a vendor.
+Nobody, as far as we can find, ships the **assembly**: ownership + record + task-head +
+pulse in one human-legible, zero-infrastructure protocol — nor these four properties:
+
+- a **heartbeat** that flags stale context instead of letting it rot;
+- a **scratchpad that must reconcile and die** instead of accumulating;
+- **fact-vs-decision arbitration** for conflicting entries (facts get measured, decisions
+  go to the human);
+- **multi-vendor agents under one human takeover authority**.
+
+---
+
+*The diary wins on any conflict with this page.*

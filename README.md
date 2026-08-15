@@ -44,7 +44,8 @@ keeps no state.
 | *the relay* | Ephemeral agent-to-agent messages: work orders, receipts, handbacks. **Carries work, never truth** — nothing is true until an owning agent writes it into a ledger. |
 
 Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board —
-each shipped with tests that prove it can **fail** (see `tests/fixtures/`).
+shipped with a test suite whose fixtures are real production traps, built to prove the
+instruments **catch what they must catch** (see `tests/fixtures/`).
 
 **Truth runs vertically and stays; messages run horizontally and vanish.**
 
@@ -91,14 +92,38 @@ This protocol was extracted from a working AI research operation, not invented f
 
 ## Quickstart
 
-1. Copy `templates/` into your repo (`CLAIMS.md`, `DIARY.md`, `INDEX.md`, `notebooks/`)
-   and the `scripts/` directory. Everything is plain text; read all of it first — it's short.
-2. Install the hooks: `./install_hooks.sh`. Per-clone, one command.
-3. Run the shipped tests: `python3 -m pytest tests/`. **Including the must-fail fixtures** —
-   if the broken-lease fixture doesn't fail, stop: your install can't catch what it exists
-   to catch.
-4. Have your first agent session read `PROTOCOL.md`, claim a track in `CLAIMS.md`, and open
-   a notebook. The ritual does the rest.
+Everything below runs **from the root of your own repo** (the one you're protecting —
+Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned this repo.
+
+1. **Copy the whole kit in** — surfaces, scripts, tests, hooks, the installer, and the law:
+
+   ```sh
+   cp -R "$WATCHBILL/templates/." .        # CLAIMS.md DIARY.md INDEX.md notebooks/ .gitignore
+   cp -R "$WATCHBILL/scripts" "$WATCHBILL/tests" "$WATCHBILL/hooks" .
+   cp "$WATCHBILL/install_hooks.sh" "$WATCHBILL/PROTOCOL.md" .
+   ```
+
+   The `templates/.` dot-copy matters: it brings the `.gitignore` that keeps the heartbeat
+   store (`.watchbill/` — rewritten on every tool call by every session) out of version
+   control. Everything is plain text; read all of it first — it's short.
+
+2. **Install the pre-commit hook**: `./install_hooks.sh` — from *your* repo root. It
+   refuses to run where step 1 hasn't landed (no `.git`, or `scripts/`+`tests/` missing),
+   always prints the exact `.git/hooks` path it installed into, and warns if you ran it
+   from the Watchbill source checkout by mistake — because an earlier version, run from
+   there, silently protected the wrong repo while printing success.
+
+3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `18 passed` in the Watchbill checkout, `17 passed, 1 skipped`
+   in your repo (the skip is the template-source check, which lives only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
+   shipped traps are supposed to be caught, not to turn your suite red. To watch a trap
+   fire live, put prose inside a `Lease-until` cell in your own `CLAIMS.md` and run
+   `python3 scripts/watchbill_check.py CLAIMS.md` — it must ERROR ("SILENTLY DISARMED").
+   If it stays quiet, stop: your install can't catch what it exists to catch.
+
+4. **Put your first session on the bill**: have it read `PROTOCOL.md`, wire the hooks for
+   your harness (`hooks/claude-code/README.md` for Claude Code — then verify the heartbeat
+   actually stamps: `python3 scripts/heartbeat.py list` after one tool call), claim a track
+   in `CLAIMS.md`, and open a notebook. The ritual does the rest.
 
 ## How it relates to what exists
 

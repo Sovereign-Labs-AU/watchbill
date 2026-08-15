@@ -8,7 +8,7 @@
 
 | Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| example-feature (synthetic example — replace me) | src/example/** | Agent | s-demo-0001 (example session) | ExampleVendor Model-1 | 2026-01-01 09:00 | 2026-01-01 13:00 | Build the example feature; release this row at reconcile. |
+| example-feature (synthetic — RELEASED example) | src/example/** | — | RELEASED — synthetic example row; outcome would be in the diary | — | 2026-01-01 09:00 | | A LIVE claim fills the cells as: track · globs · Agent · your-session-id (label) · vendor model · claimed date · future BARE-date lease · task. Never put a literal pipe character inside a cell — it splits the row and the parser drops it (the checker errors on that). |
 | example-parked-track (synthetic) | docs/parked/** | — | UNCLAIMED — placeholder so the track is on-book; claim it before working it | — | 2026-01-01 | | Recognized-but-unowned work. |
 
 ## Resources (machines, drives, long-running boxes)
@@ -21,4 +21,4 @@
 
 | Resource | Match | Owner | Session | Claimed | Lease-until | Note |
 | --- | --- | --- | --- | --- | --- | --- |
-| example-build-box (synthetic) | buildbox.local; 10.0.0.99 | Agent | s-demo-0001 (example session) | 2026-01-01 | 2026-01-08 | Long job running here; renew weekly; release when the job lands. Lease-until stays a BARE date — prose in this cell disarms the guard. |
+| example-build-box (synthetic — RELEASED example) | buildbox.local; 10.0.0.99 | — | RELEASED — synthetic example row | 2026-01-01 | | A live resource row carries a real session id + a future BARE date (prose in the Lease-until cell disarms the guard — the checker errors on it). |

@@ -127,3 +127,51 @@ def test_heartbeat_stamp_and_survive_corruption(tmp_path, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# ---------------------------------------------------------------- notebook board (adoption-audit LOW-6)
+def test_notebook_board_parses_session_and_objective(tmp_path, capsys):
+    import notebook_board
+    nb = tmp_path / "notebook_2026-01-05_demo.md"
+    nb.write_text("**Session:** `s-demo-0001` · **Agent:** Demo\n\n## Objective\nShip the demo feature.\n")
+    assert notebook_board.main([str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "s-demo-000" in out and "Ship the demo feature." in out
+
+
+# ---------------------------------------------------------------- hook adapters (adoption-audit MEDIUM-5)
+def test_heartbeat_hook_stamps_from_stdin_json(tmp_path, monkeypatch):
+    # The hook must take session_id from STDIN JSON — there is no env var (the fictional
+    # env-var wiring left the guard permanently disarmed; adoption audit, 2026-08-15).
+    monkeypatch.chdir(tmp_path)
+    r = run_hook_cwd("heartbeat_hook.py", {"session_id": "s-hook-0001"}, tmp_path)
+    assert r.returncode == 0
+    stored = json.loads((tmp_path / ".watchbill/heartbeats.json").read_text())
+    assert "s-hook-0001" in stored
+
+
+def test_heartbeat_hook_never_breaks_the_tool_call(tmp_path):
+    for payload in ({}, {"session_id": ""}):
+        r = run_hook_cwd("heartbeat_hook.py", payload, tmp_path)
+        assert r.returncode == 0
+    assert not (tmp_path / ".watchbill/heartbeats.json").exists()  # no empty-id stamp
+
+
+def run_hook_cwd(script, payload, cwd):
+    import subprocess
+    return subprocess.run([sys.executable, str(ROOT / "hooks/claude-code" / script)],
+                          input=json.dumps(payload), capture_output=True, text=True,
+                          cwd=str(cwd))
+
+
+# ---------------------------------------------------------------- pristine templates (adoption-audit LOW-7)
+def test_shipped_templates_audit_clean(tmp_path):
+    # A brand-new adopter's FIRST checker run must say "clean." — a kit that flags out of
+    # the box teaches people to ignore flags on day one. In an adopter's repo the
+    # templates/ dir doesn't exist (its contents were copied to the root) — skip there;
+    # the check runs wherever the template source is present.
+    src = ROOT / "templates/CLAIMS.md"
+    if not src.exists():
+        pytest.skip("templates/ not present (adopter copy) — checked in the Watchbill source repo")
+    errors, flags, _ = audit(src, tmp_path / "none.json", NOW)
+    assert errors == [] and flags == []

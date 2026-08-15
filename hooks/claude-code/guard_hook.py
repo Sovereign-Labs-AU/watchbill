@@ -15,16 +15,22 @@ from guard import decide  # noqa: E402
 
 
 def main():
+    # Fail-open on ANY malformed payload — and fail-open EXPLICITLY, never by crashing:
+    # an uncaught exception exits 1, which is indistinguishable from a real WARN to the
+    # caller. The battle-proof gauntlet caught exactly that disguise.
     try:
         payload = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        return 0  # fail-open: a malformed hook payload must not brick the session
-    target = (payload.get("tool_input") or {}).get("file_path") or ""
-    session = payload.get("session_id") or ""
-    if not target or not session:
+        if not isinstance(payload, dict):
+            return 0
+        tool_input = payload.get("tool_input")
+        target = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+        session = payload.get("session_id")
+        if not isinstance(target, str) or not target or not isinstance(session, str) or not session:
+            return 0
+        verdict, reason = decide(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"),
+                                 session, target)
+    except Exception:
         return 0
-    verdict, reason = decide(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"),
-                             session, target)
     if verdict == "block":
         print(f"watchbill guard: {reason}", file=sys.stderr)
         return 2

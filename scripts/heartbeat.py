@@ -12,6 +12,7 @@ Usage:
   python3 scripts/heartbeat.py list
 """
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,9 +31,12 @@ def stamp(session_id: str):
     beats = load()
     beats[session_id] = {"last_active": datetime.now().isoformat(timespec="seconds")}
     STORE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STORE.with_suffix(".tmp")
+    # pid-unique temp name: concurrent stampers sharing one ".tmp" raced each other's
+    # rename and crashed (battle-proof gauntlet, 2026-08-15). Atomic replace still
+    # guarantees readers never see a torn store; simultaneous stamps are last-writer-wins.
+    tmp = STORE.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps(beats, indent=1, sort_keys=True))
-    tmp.replace(STORE)  # atomic — a torn write must not corrupt the pulse everyone reads
+    tmp.replace(STORE)
 
 
 def main(argv=None):

@@ -25,9 +25,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from watchbill_check import (  # noqa: E402 — single source of parsing truth, so checker and guard cannot drift
-    TRACK_COLS, heartbeat_live, is_divider, load_heartbeats, parse_lease,
-    row_is_closed, session_token, split_row,
+    MIN_JOIN_PREFIX, TRACK_COLS, heartbeat_live, is_divider, load_heartbeats,
+    parse_lease, row_is_closed, session_token, split_row,
 )
+
+
+def same_session(a: str, b: str) -> bool:
+    """Exact match, or a prefix of at least MIN_JOIN_PREFIX chars — the same rule the
+    heartbeat join uses. A 1-char Session cell must not own (or match) everything."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return (len(a) >= MIN_JOIN_PREFIX and b.startswith(a)) or \
+           (len(b) >= MIN_JOIN_PREFIX and a.startswith(b))
 
 
 def globs_match(globs_cell: str, target: str) -> bool:
@@ -65,7 +76,7 @@ def decide(claims_path: Path, beats_path: Path, session: str, target: str,
             continue
 
         owner = session_token(cells[3])
-        if owner and (session.startswith(owner) or owner.startswith(session)):
+        if same_session(session, owner):
             return "allow", f"you hold this track ({cells[0][:40]!r})"
         lease = parse_lease(cells[6])
         if lease is None:

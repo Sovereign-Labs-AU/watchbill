@@ -18,16 +18,18 @@ import heartbeat  # noqa: E402
 
 
 def main():
+    # A liveness stamp must NEVER break a tool call: any malformed payload — invalid
+    # bytes, non-dict JSON, wrong-typed session_id — degrades to "no stamp", exit 0.
     try:
         payload = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        return 0
-    session = (payload.get("session_id") or "").strip()
-    if session:
-        try:
-            heartbeat.stamp(session)
-        except OSError:
-            pass  # a full disk must not brick the session; the checker will notice staleness
+        if not isinstance(payload, dict):
+            return 0
+        session = payload.get("session_id")
+        if not isinstance(session, str) or not session.strip():
+            return 0
+        heartbeat.stamp(session.strip())
+    except Exception:
+        pass
     return 0
 
 

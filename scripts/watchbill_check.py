@@ -64,8 +64,10 @@ def load_heartbeats(path: Path):
         return {}
     try:
         raw = json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return {}
+    if not isinstance(raw, dict):
+        return {}   # valid JSON that isn't a dict (null, [], 42) is a corrupt store, not a crash
     out = {}
     for sid, rec in raw.items():
         ts = rec.get("last_active") if isinstance(rec, dict) else rec
@@ -81,9 +83,15 @@ def session_token(cell: str):
     return (cell or "").split()[0].strip("`*") if (cell or "").strip() else ""
 
 
+MIN_JOIN_PREFIX = 6   # a shorter Session token cannot join a heartbeat — too easy to
+                      # collide with (or lazily borrow) another session's liveness
+
 def heartbeat_live(token: str, beats: dict, now: datetime):
     for sid, last in beats.items():
-        if sid.startswith(token) or token.startswith(sid):
+        exact = sid == token
+        prefix = (len(token) >= MIN_JOIN_PREFIX and sid.startswith(token)) or \
+                 (len(sid) >= MIN_JOIN_PREFIX and token.startswith(sid))
+        if exact or prefix:
             return (now - last) <= timedelta(minutes=HEARTBEAT_FRESH_MINUTES)
     return False
 

@@ -175,3 +175,52 @@ def test_shipped_templates_audit_clean(tmp_path):
         pytest.skip("templates/ not present (adopter copy) — checked in the Watchbill source repo")
     errors, flags, _ = audit(src, tmp_path / "none.json", NOW)
     assert errors == [] and flags == []
+
+
+# ---------------------------------------------------------------- battle-proof regressions (2026-08-15)
+def test_heartbeat_store_nondict_json_reads_empty(tmp_path):
+    # Valid JSON that isn't a dict (null / [] / 42) is a corrupt store, not a crash.
+    from watchbill_check import load_heartbeats
+    for payload in ("null", "[]", "42", '"x"'):
+        p = tmp_path / "hb.json"
+        p.write_text(payload)
+        assert load_heartbeats(p) == {}
+
+
+def test_hooks_survive_hostile_stdin(tmp_path):
+    # Crash-exit-1 is indistinguishable from a real WARN — hooks must fail-open EXPLICITLY.
+    import subprocess
+    hostile = [b"null", b"[]", b'{"session_id": 42}', b"\xff\xfe garbage",
+               b'{"tool_input": "notadict", "session_id": "s-x"}']
+    for payload in hostile:
+        for script, ok in (("heartbeat_hook.py", (0,)), ("guard_hook.py", (0,))):
+            r = subprocess.run([sys.executable, str(ROOT / "hooks/claude-code" / script)],
+                               input=payload, capture_output=True, cwd=str(tmp_path), timeout=10)
+            assert r.returncode in ok, (script, payload, r.returncode, r.stderr[-200:])
+
+
+def test_session_join_requires_min_prefix(tmp_path):
+    # A 1-char token must neither borrow liveness nor claim ownership.
+    from watchbill_check import heartbeat_live
+    from guard import same_session
+    beats = {"s-live-0001": NOW}
+    assert not heartbeat_live("s", beats, NOW)
+    assert heartbeat_live("s-live-0001", beats, NOW)
+    assert heartbeat_live("s-live", beats, NOW)          # >= 6 chars: legitimate shortening
+    assert not same_session("s", "s-live-0001")
+    assert same_session("s-live-0001", "s-live")
+    assert same_session("s-1", "s-1")                    # short but EXACT is fine
+
+
+def test_heartbeat_parallel_stamps_never_crash(tmp_path):
+    # 8 processes × 25 stamps against one store: no crash, no torn store (the shared-tmp
+    # rename race from the battle-proof gauntlet, locked here).
+    import subprocess
+    code = (f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
+            "import heartbeat, sys as s2; [heartbeat.stamp(s2.argv[1]) for _ in range(25)]")
+    procs = [subprocess.Popen([sys.executable, "-c", code, f"s-par-{i:02d}"],
+                              cwd=tmp_path, stderr=subprocess.PIPE) for i in range(8)]
+    errs = [p.communicate(timeout=30)[1] for p in procs]
+    assert all(p.returncode == 0 for p in procs), [e[-200:] for e in errs if e]
+    assert all(not e for e in errs), [e[-200:] for e in errs if e]
+    json.loads((tmp_path / ".watchbill/heartbeats.json").read_text())

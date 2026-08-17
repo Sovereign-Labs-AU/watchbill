@@ -164,6 +164,77 @@ def run_hook_cwd(script, payload, cwd):
                           cwd=str(cwd))
 
 
+# ---------------------------------------------------------------- session-start loader
+NOW_DIARY = (
+    "# Diary — the shared record\n\n"
+    "## NOW\n\n"
+    "### demo-track — Class: ACTIVE. verified: 2026-01-10 · waiting-on: —\n"
+    "- The one live fact the next session must not miss.\n\n"
+    "## Log\n\n"
+    "### 2026-01-10 — [Demo] — must NOT leak into the injected board.\n"
+)
+
+
+def test_session_start_injects_now_block(tmp_path):
+    # A DIARY.md with a ## NOW block -> valid SessionStart JSON whose additionalContext
+    # carries the NOW content (and stops at the next top-level ## , not the Log).
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0001",
+                                               "source": "startup"}, tmp_path)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)
+    hso = out["hookSpecificOutput"]
+    assert hso["hookEventName"] == "SessionStart"
+    ctx = hso["additionalContext"]
+    assert "The one live fact the next session must not miss." in ctx
+    assert "must NOT leak into the injected board." not in ctx   # stops at ## Log
+    assert "PROTOCOL.md" in ctx                                  # ritual reminder rides along
+
+
+def test_session_start_fails_open_when_no_diary(tmp_path):
+    # No DIARY.md at all — the loader stays silent and never blocks the start.
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0002"}, tmp_path)
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+
+def test_session_start_silent_on_empty_now(tmp_path):
+    # A diary with a ## NOW heading but no content under it injects nothing.
+    (tmp_path / "DIARY.md").write_text("# Diary\n\n## NOW\n\n## Log\n\n### 2026-01-10 — x\n")
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0003"}, tmp_path)
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+
+def test_session_start_truncates_oversized_now(tmp_path):
+    import importlib
+    sys.path.insert(0, str(ROOT / "hooks/claude-code"))
+    ssh = importlib.import_module("session_start_hook")
+    big = "## NOW\n" + ("x" * (ssh.MAX_CHARS + 5000)) + "\n## Log\n"
+    (tmp_path / "DIARY.md").write_text(big)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0004"}, tmp_path)
+    assert r.returncode == 0
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "truncated" in ctx
+
+
+def test_session_start_whole_emit_under_harness_inline_limit(tmp_path):
+    # Claude Code inlines hook additionalContext only up to 10,000 chars; larger emits
+    # are persisted to a file with a ~2KB preview the session never reads past (measured
+    # live 2026-08-17: a 12,360-char emit arrived truncated to 2KB). The WHOLE emit —
+    # preamble + block + truncation note — must stay under that, worst case, or the
+    # loud truncation is replaced by a silent one.
+    import importlib
+    sys.path.insert(0, str(ROOT / "hooks/claude-code"))
+    ssh = importlib.import_module("session_start_hook")
+    big = "## NOW\n" + ("x" * (ssh.MAX_CHARS * 3)) + "\n## Log\n"
+    (tmp_path / "DIARY.md").write_text(big)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0005"}, tmp_path)
+    assert r.returncode == 0
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert len(ctx) < 10000, "whole emit must land under the harness 10,000-char inline limit"
+
+
 # ---------------------------------------------------------------- pristine templates (adoption-audit LOW-7)
 def test_shipped_templates_audit_clean(tmp_path):
     # A brand-new adopter's FIRST checker run must say "clean." — a kit that flags out of
@@ -193,7 +264,8 @@ def test_hooks_survive_hostile_stdin(tmp_path):
     hostile = [b"null", b"[]", b'{"session_id": 42}', b"\xff\xfe garbage",
                b'{"tool_input": "notadict", "session_id": "s-x"}']
     for payload in hostile:
-        for script, ok in (("heartbeat_hook.py", (0,)), ("guard_hook.py", (0,))):
+        for script, ok in (("heartbeat_hook.py", (0,)), ("guard_hook.py", (0,)),
+                           ("session_start_hook.py", (0,))):
             r = subprocess.run([sys.executable, str(ROOT / "hooks/claude-code" / script)],
                                input=payload, capture_output=True, cwd=str(tmp_path), timeout=10)
             assert r.returncode in ok, (script, payload, r.returncode, r.stderr[-200:])

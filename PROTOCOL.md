@@ -67,7 +67,10 @@ source of truth for its domain. When you create a new ledger, add a pointer line
 
 ## 2. The session ritual
 
-1. **Orient** — read `DIARY.md ## NOW`. Re-stamp what you verify; flag stale items.
+1. **Orient** — read `DIARY.md ## NOW`. Re-stamp what you verify; flag stale items. On
+   Claude Code this step is machine-enforced: the SessionStart hook injects `## NOW` into
+   context before the first tool call (`hooks/claude-code/session_start_hook.py`), so the
+   board is read from the tree, not from memory.
 2. **Check CLAIMS** — live lease held by another session on your target? STOP, ask the
    Operator. Otherwise **claim**.
 3. **Open your notebook** — objectives before work.

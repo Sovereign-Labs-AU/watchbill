@@ -64,6 +64,10 @@ Session-start loader (`session_start_hook.py`):
   repo with no diary yet starts exactly as before.
 - The injected block is bounded (`MAX_CHARS`, truncated with a note if the `## NOW` has
   grown too large — which is itself a sign finished work should have moved to `## Log`).
+  The cap is calibrated under Claude Code's 10,000-character inline limit for hook
+  output: past that the harness silently persists the context to a file with only a
+  ~2KB preview, and the session never sees the rest — so the loader truncates loudly
+  here rather than letting the harness truncate silently there.
 
 Verdict translation (`guard_hook.py`):
 - `BLOCK` → non-zero exit with the reason on stderr (Claude Code stops the tool call; the

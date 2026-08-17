@@ -24,7 +24,13 @@ from pathlib import Path
 # Bound the injected context: `## NOW` is the live board, not the whole diary. A NOW
 # that has grown past this is itself a smell (finished work should have moved to ## Log),
 # so truncate loudly rather than flood the window.
-MAX_CHARS = 12000
+#
+# CALIBRATION (measured 2026-08-17): Claude Code inlines hook output only up to 10,000
+# characters — anything larger is silently persisted to a file with a ~2KB preview, so
+# the session does NOT see it. The cap must keep the WHOLE emit (preamble + block +
+# truncation note) under that, or the loud truncation here is replaced by a silent one
+# there. 9,000 leaves margin for the ~600-char preamble and the note.
+MAX_CHARS = 9000
 
 
 def find_diary():

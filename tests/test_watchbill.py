@@ -218,6 +218,23 @@ def test_session_start_truncates_oversized_now(tmp_path):
     assert "truncated" in ctx
 
 
+def test_session_start_whole_emit_under_harness_inline_limit(tmp_path):
+    # Claude Code inlines hook additionalContext only up to 10,000 chars; larger emits
+    # are persisted to a file with a ~2KB preview the session never reads past (measured
+    # live 2026-08-17: a 12,360-char emit arrived truncated to 2KB). The WHOLE emit —
+    # preamble + block + truncation note — must stay under that, worst case, or the
+    # loud truncation is replaced by a silent one.
+    import importlib
+    sys.path.insert(0, str(ROOT / "hooks/claude-code"))
+    ssh = importlib.import_module("session_start_hook")
+    big = "## NOW\n" + ("x" * (ssh.MAX_CHARS * 3)) + "\n## Log\n"
+    (tmp_path / "DIARY.md").write_text(big)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0005"}, tmp_path)
+    assert r.returncode == 0
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert len(ctx) < 10000, "whole emit must land under the harness 10,000-char inline limit"
+
+
 # ---------------------------------------------------------------- pristine templates (adoption-audit LOW-7)
 def test_shipped_templates_audit_clean(tmp_path):
     # A brand-new adopter's FIRST checker run must say "clean." — a kit that flags out of

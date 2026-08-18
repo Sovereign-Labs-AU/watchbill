@@ -1,15 +1,17 @@
 # Wiring Watchbill into Claude Code
 
-Three hooks connect a Claude Code session to the protocol: the **session-start loader**
+Four hooks connect a Claude Code session to the protocol: the **session-start loader**
 (injects the live board at session start — the ritual's first step), the **heartbeat**
-(liveness is measured, never asserted), and the **guard** (the ownership check before
-writes/edits). Other harnesses wire the same scripts through whatever hook mechanism they
+(liveness is measured, never asserted), the **guard** (the ownership check before
+writes/edits), and the **close-out reminder** (the ritual's last step, which nothing used to
+watch). Other harnesses wire the same scripts through whatever hook mechanism they
 provide — the adapters here are thin stdin-JSON shims; the logic lives in `scripts/` (the
-session-start loader carries its own reading and ranking, and reaches into `scripts/` for
-one optional extra — the waiting-on notice — which it omits if the script is absent).
+session-start loader carries its own reading and ranking, and reaches into `scripts/` for two
+optional extras — the waiting-on notice and the dangling-session notice — omitting either if
+its script is absent).
 
-> **All three adapters read the hook's stdin JSON payload** (`session_id` for the guard
-> and heartbeat) — the stable, documented interface. (A harness-version-specific env var
+> **All four adapters read the hook's stdin JSON payload** (`session_id` for the guard,
+> the heartbeat and the close-out reminder) — the stable, documented interface. (A harness-version-specific env var
 > may also exist, but names change between versions; stdin is the contract.) An earlier
 > draft assumed an env var, and the result was a heartbeat that silently never stamped,
 > leaving the guard permanently disarmed while looking wired. The adoption audit caught it
@@ -50,6 +52,14 @@ the `hooks/claude-code/` depth):
           { "type": "command", "command": "python3 hooks/claude-code/guard_hook.py" }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "python3 hooks/claude-code/stop_hook.py", "timeout": 15 }
+        ]
+      }
     ]
   }
 }
@@ -80,6 +90,23 @@ Session-start loader (`session_start_hook.py`):
   `## NOW` still asks about that `## Log` has already ruled — the ruling lives in the
   section nobody loads at session start, so it has to be carried forward mechanically.
   Missing script, or any error in it, and the loader simply omits that line.
+
+Close-out reminder (`stop_hook.py`):
+- It speaks only when the session actually owes something: a live lease in its name, or an
+  open notebook, with no `## Log` entry from it. A session that owes nothing gets **silence** —
+  a reminder that fires on every stop is noise, and noise gets switched off.
+- **Two channels, and the difference is the point.** `systemMessage` puts it in front of the
+  **Operator** (this is the channel we have verified in production). `decision: "block"` hands
+  the reason back to the **model**, which keeps working instead of stopping — Claude Code's
+  documented Stop-hook contract for returning control to the agent. Wire it, then watch one
+  real stop to confirm the behaviour on your version before you rely on it.
+- **Loop guard:** when Claude Code sets `stop_hook_active` (it is already continuing *because*
+  of a stop hook), this never blocks again — it downgrades to a message. A reminder that
+  re-fires on the turn it caused is not a reminder, it is a trap the agent cannot leave in
+  order to do the work being demanded.
+- **It cannot catch the session that dies.** Nothing can — a crash takes the context with it.
+  That case is caught from the other end: `closeout.py dangling`, surfaced by the session-start
+  loader to whoever arrives next (PROTOCOL.md §2.6).
 
 Verdict translation (`guard_hook.py`):
 - `BLOCK` → non-zero exit with the reason on stderr (Claude Code stops the tool call; the

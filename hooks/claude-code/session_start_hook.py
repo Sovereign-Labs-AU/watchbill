@@ -174,6 +174,34 @@ def stale_waiting_on(diary_text):
         return ""
 
 
+def dangling_notice():
+    """One line naming sessions that left work behind and never closed out.
+
+    ★ This is the half of the close-out fix that does NOT depend on the departing session. A
+    crashed or restored session cannot be made to clean up after itself, so the mess is
+    surfaced HERE, at the start of the next session, where somebody is actually reading.
+    Bounded and fail-open like everything else on this path."""
+    try:
+        here = str(Path(__file__).resolve().parents[2] / "scripts")
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import closeout
+        from datetime import datetime
+        items = closeout.dangling("CLAIMS.md", "notebooks", "DIARY.md",
+                                  ".watchbill/heartbeats.json", datetime.now())
+        if not items:
+            return ""
+        shown = items[:3]
+        names = ", ".join(f"{d['session']} ({d['idle_minutes'] // 60}h silent)" for d in shown)
+        more = f", and {len(items) - len(shown)} more" if len(items) > len(shown) else ""
+        return (f"NOTE — {len(items)} session(s) left work behind without closing out: {names}"
+                f"{more}. Their tracks are still leased and nothing was written to `## Log`. "
+                f"Do NOT take a live lease over on your own say-so — surface it to the Operator "
+                f"(PROTOCOL.md §1.1 rule 5, §2.6).")
+    except Exception:
+        return ""
+
+
 PREAMBLE_WHOLE = (
     "SESSION-START RITUAL (Watchbill PROTOCOL.md §2, non-negotiable): the live state of "
     "play from this repo's `DIARY.md` `## NOW` is below. Read it before acting — do not "
@@ -208,8 +236,12 @@ def clamp(context):
             + "\n\n… (emit capped — read DIARY.md ## NOW for the rest)")
 
 
-def build_context(now, stale):
-    """Whole board if it fits; otherwise the ranked digest. Returns the full emit."""
+def build_context(now, *extras):
+    """Whole board if it fits; otherwise the ranked digest. `extras` are the appended notices
+    (settled asks, dangling sessions); they are counted against the budget BEFORE the body is
+    sized, because an appendage that is not budgeted for is how a 27,749-character emit
+    happened once already."""
+    stale = "\n\n".join(e for e in extras if e)
     for preamble, digest_mode in ((PREAMBLE_WHOLE, False), (PREAMBLE_DIGEST, True)):
         # Budget is derived from THIS emit's preamble, not hardcoded: a preamble edit must
         # not be able to push the whole emit over the harness limit without a test noticing.
@@ -242,7 +274,7 @@ def main():
         now = extract_now(text)
         if not now:
             return 0  # no ## NOW block to load
-        context = build_context(now, stale_waiting_on(text))
+        context = build_context(now, stale_waiting_on(text), dangling_notice())
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",

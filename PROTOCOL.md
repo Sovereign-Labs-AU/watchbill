@@ -108,7 +108,30 @@ source of truth for its domain. When you create a new ledger, add a pointer line
 3. **Open your notebook** — objectives before work.
 4. **Work the one task in front of you.** Stay off other sessions' tracks. Renew your lease.
 5. **Reconcile** — dated Log entry, refresh NOW, land every notebook line somewhere.
-6. **Close out** — delete the spent notebook, release your claim row.
+6. **Close out** — delete the spent notebook, release your claim row (or renew it, if the work
+   is genuinely still live and you are coming back to it).
+
+**Steps 5-6 are the ones that go missing, and their failure is silent.** The work looks
+finished — the artifacts are all there — while the track stays leased to a session that will
+never speak again, and the next session cannot tell live work from abandoned work. Every other
+step has something behind it; this one is checked from both ends:
+
+- `python3 scripts/closeout.py check --session <id>` — what do I still owe? A live lease in my
+  name, an open notebook, no `## Log` entry from me. Silent when nothing is owed. On Claude
+  Code the Stop adapter runs this and hands the answer back to the **agent** (§2.1's loader is
+  the same idea at the other end of the session).
+- `python3 scripts/closeout.py dangling` — **who left work behind?** This is the half that
+  matters, because *you cannot make a dying process clean up after itself*: a crash, a restore,
+  a closed laptop, and the session is gone with its context. So the protocol does not rely on
+  the departing session at all — the session-start loader names dangling sessions to whoever
+  arrives next, where somebody is actually reading.
+
+A session is **dangling** on all four conditions: it HAD a pulse, the pulse stopped, it still
+holds a live lease or an open notebook, and it never wrote itself into `## Log`. A session with
+no heartbeat at all is not flagged — it may be a human, or a harness with no heartbeat adapter
+wired, and the checker already reports those rows as unjoinable. Finding a dangling session is
+not authority to take its work: **an expired lease is reclaimable, a live one is not** (§1.1
+rule 5). Surface it to the Operator.
 
 ## 3. Conflict arbitration — fact vs decision
 
@@ -186,7 +209,9 @@ wire an adapter — §1.1.)
 ## 6. Honest scope
 
 This protocol is **advisory infrastructure with enforcement hooks**, not a sandbox. A
-determined or malfunctioning agent can ignore it. What you buy: visible ownership,
+determined or malfunctioning agent can ignore it. The close-out check (§2.6) is the clearest
+case of the limit and of the design response: a session that crashes cannot be reminded of
+anything, so the reminder is only half the fix and the other half assumes it will fail. What you buy: visible ownership,
 authorized handoff, violations that show up, and an append-only record that makes
 after-the-fact reconstruction possible. If you need hard isolation, use hard isolation —
 underneath this protocol, not instead of it.

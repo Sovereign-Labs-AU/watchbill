@@ -595,3 +595,136 @@ def test_release_gate_is_wired_only_in_the_source_checkout(tmp_path):
     assert "tests/builders_suite.sh" in installer
     assert "templates/CLAIMS.md" in installer.split("bash tests/builders_suite.sh")[0], \
         "the builder's-suite step must be conditional on being the source checkout"
+
+
+# ================================================================ close-out (PROTOCOL.md §2.5-2.6)
+import closeout                                          # noqa: E402
+
+CLAIMS_LIVE = (
+    "| Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+    "| the-track | src/** | Human | s-worker-0001 | Model-1 | 2026-01-09 | 2026-01-20 | LIVE work |\n"
+)
+DIARY_NO_ENTRY = "## NOW\n\n### x — Class: ACTIVE\n\n## Log\n\n### 2026-01-09 — somebody else\n"
+
+
+def workspace(tmp_path, claims=CLAIMS_LIVE, diary=DIARY_NO_ENTRY, notebook_session=None):
+    (tmp_path / "CLAIMS.md").write_text(claims)
+    (tmp_path / "DIARY.md").write_text(diary)
+    (tmp_path / "notebooks").mkdir(exist_ok=True)
+    if notebook_session:
+        (tmp_path / "notebooks" / "notebook_2026-01-09_x.md").write_text(
+            f"**Session:** `{notebook_session}`\n\n## Objective\nDo the thing.\n")
+    return tmp_path
+
+
+def test_check_names_every_obligation_and_nothing_else(tmp_path):
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    o = closeout.check("s-worker-0001", w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", NOW)
+    assert o["held_tracks"] == ["the-track"] and len(o["notebooks"]) == 1 and o["logged"] is False
+    text = closeout.render_check(o)
+    assert "`## Log` has no entry" in text and "the-track" in text and "notebook" in text
+
+
+def test_check_is_silent_for_a_session_that_owes_nothing(tmp_path):
+    # MUST-NOT-FIRE: a session holding no track and no notebook must produce no output at all,
+    # or the reminder becomes noise on every single stop and gets turned off.
+    w = workspace(tmp_path)
+    o = closeout.check("s-passerby-9999", w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", NOW)
+    assert closeout.render_check(o) == ""
+
+
+def test_check_still_asks_for_the_lease_after_the_log_is_written(tmp_path):
+    logged = DIARY_NO_ENTRY.replace("somebody else", "[Model-1] (session `s-worker-0001`) done")
+    w = workspace(tmp_path, diary=logged)
+    text = closeout.render_check(
+        closeout.check("s-worker-0001", w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", NOW))
+    assert "`## Log` has no entry" not in text     # it logged
+    assert "still leased to you" in text           # but the row is still held
+
+
+def test_dangling_needs_all_four_conditions(tmp_path):
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    beats = tmp_path / "hb.json"
+    gone = (NOW - timedelta(hours=9)).isoformat(timespec="seconds")
+    beats.write_text(json.dumps({"s-worker-0001": {"last_active": gone}}))
+    found = closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW)
+    assert [d["session"] for d in found] == ["s-worker-0001"]
+    assert "left work behind" in closeout.render_dangling(found)
+
+    # (a) still stamping -> not dangling, it is just working
+    beats.write_text(json.dumps({"s-worker-0001": {
+        "last_active": (NOW - timedelta(minutes=5)).isoformat(timespec="seconds")}}))
+    assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW) == []
+
+    # (b) gone BUT it wrote itself into ## Log -> the record stands, nothing dangles
+    beats.write_text(json.dumps({"s-worker-0001": {"last_active": gone}}))
+    w2 = workspace(tmp_path, diary=DIARY_NO_ENTRY.replace("somebody else", "s-worker-0001 closed"),
+                   notebook_session="s-worker-0001")
+    assert closeout.dangling(w2 / "CLAIMS.md", w2 / "notebooks", w2 / "DIARY.md", beats, NOW) == []
+
+
+def test_dangling_says_nothing_when_no_heartbeats_are_wired(tmp_path):
+    # MUST-NOT-FIRE: without a heartbeat adapter every row would look abandoned. A check that
+    # flags everything protects nothing — the checker already reports unjoinable rows.
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    empty = tmp_path / "none.json"
+    assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", empty, NOW) == []
+
+
+def test_dangling_ignores_released_and_expired_rows(tmp_path):
+    # A released row owes nothing; an expired lease is already the checker's business. Neither
+    # is a close-out failure, and reporting them here would double-flag.
+    claims = CLAIMS_LIVE.replace("| 2026-01-20 | LIVE work |", "| 2026-01-01 | LIVE work |")
+    w = workspace(tmp_path, claims=claims)
+    beats = tmp_path / "hb.json"
+    beats.write_text(json.dumps({"s-worker-0001": {
+        "last_active": (NOW - timedelta(hours=9)).isoformat(timespec="seconds")}}))
+    assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW) == []
+
+
+def test_stop_hook_blocks_once_then_never_traps_the_session(tmp_path):
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    r = run_hook_cwd("stop_hook.py", {"session_id": "s-worker-0001"}, w)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)
+    assert out["decision"] == "block" and "CLOSE-OUT NOT DONE" in out["reason"]
+
+    # LOOP GUARD: on the turn it already caused, it must NOT block again — a reminder that
+    # re-fires on its own continuation is a trap the agent cannot leave to do the work.
+    r2 = run_hook_cwd("stop_hook.py", {"session_id": "s-worker-0001",
+                                       "stop_hook_active": True}, w)
+    out2 = json.loads(r2.stdout)
+    assert "decision" not in out2 and "systemMessage" in out2
+
+
+def test_stop_hook_is_silent_and_harmless_when_nothing_is_owed(tmp_path):
+    w = workspace(tmp_path)
+    for payload in ({"session_id": "s-passerby-9999"}, {}, {"session_id": ""}, {"session_id": None}):
+        r = run_hook_cwd("stop_hook.py", payload, w)
+        assert r.returncode == 0 and r.stdout.strip() == ""
+
+
+def test_session_start_surfaces_a_dangling_session(tmp_path):
+    # The half that does not depend on the departing session: the next one is told.
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    (w / ".watchbill").mkdir(exist_ok=True)
+    (w / ".watchbill/heartbeats.json").write_text(json.dumps({"s-worker-0001": {
+        "last_active": (datetime.now() - timedelta(hours=9)).isoformat(timespec="seconds")}}))
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-next-0002"}, w)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "left work behind" in ctx and "s-worker-0001" in ctx
+    assert "own say-so" in ctx          # and it must not invite a unilateral takeover
+
+
+def test_dangling_ignores_a_session_that_never_had_a_pulse(tmp_path):
+    """MUST-NOT-FIRE, and distinct from the no-heartbeats-at-all case: the store is populated
+    by OTHER sessions, and the row's owner simply never stamped. That owner may be a human, or
+    a harness with no heartbeat adapter wired — the checker already reports such rows as
+    unjoinable, and guessing 'abandoned' from an absence would flag them forever. (The
+    empty-store test does not reach this branch: mutation caught it surviving, 2026-08-18.)"""
+    w = workspace(tmp_path, notebook_session="s-worker-0001")
+    beats = tmp_path / "hb.json"
+    beats.write_text(json.dumps({"s-somebody-else-0009": {
+        "last_active": (NOW - timedelta(minutes=5)).isoformat(timespec="seconds")}}))
+    assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW) == []

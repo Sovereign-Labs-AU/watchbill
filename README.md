@@ -9,6 +9,8 @@ sharing a single working tree for months.**
 Plain markdown and git. A few small scripts. No server, no database, no vendor, no account.
 Every rule in it exists because we hit the failure it prevents.
 
+[![CI](https://github.com/Sovereign-Labs-AU/watchbill/actions/workflows/ci.yml/badge.svg)](https://github.com/Sovereign-Labs-AU/watchbill/actions/workflows/ci.yml)
+
 From [Sovereign Labs AU](https://sovereignlabs.com.au). Licensed Apache-2.0.
 
 ---
@@ -124,6 +126,10 @@ Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned t
    prose in a *closed* row's lease cell is correctly ignored — then run
    `python3 scripts/watchbill_check.py CLAIMS.md`: it must ERROR ("SILENTLY DISARMED").
    If it stays quiet, stop: your install can't catch what it exists to catch.
+   (Watchbill's own runs are public: the CI badge above covers the unit suite on four
+   Python versions plus the builder's suite — mutation, battle, data and a replayed
+   cold-adopter install. You should not have to clone a repo to see whether its
+   instruments still fail when they should.)
 
 4. **Put your first session on the bill**: have it read `PROTOCOL.md`, wire the hooks for
    your harness (`hooks/claude-code/README.md` for Claude Code — then verify the heartbeat

@@ -43,9 +43,11 @@ keeps no state.
 | `INDEX.md` | The front door: pointers only, no data of its own. |
 | *the relay* | Ephemeral agent-to-agent messages: work orders, receipts, handbacks. **Carries work, never truth** — nothing is true until an owning agent writes it into a ledger. |
 
-Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board —
-shipped with a test suite whose fixtures are real production traps, built to prove the
-instruments **catch what they must catch** (see `tests/fixtures/`).
+Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board, and
+a waiting-on reconciler that catches a blocker the log has already settled — shipped with a
+test suite whose fixtures are real production traps, built to prove the instruments **catch
+what they must catch** (see `tests/fixtures/`), and whose must-NOT-fire tests prove they stay
+quiet on the cases they must not touch.
 
 **Truth runs vertically and stays; messages run horizontally and vanish.**
 
@@ -113,11 +115,13 @@ Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned t
    from the Watchbill source checkout by mistake — because an earlier version, run from
    there, silently protected the wrong repo while printing success.
 
-3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `22 passed` in the Watchbill checkout, `21 passed, 1 skipped`
+3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `50 passed` in the Watchbill checkout, `48 passed, 2 skipped`
    in your repo (the skip is the template-source check, which lives only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
    shipped traps are supposed to be caught, not to turn your suite red. To watch a trap
-   fire live, put prose inside a `Lease-until` cell in your own `CLAIMS.md` and run
-   `python3 scripts/watchbill_check.py CLAIMS.md` — it must ERROR ("SILENTLY DISARMED").
+   fire live, put prose inside the `Lease-until` cell of a **live** row in your own
+   `CLAIMS.md` — claim a track first, since the shipped rows are all released examples and
+   prose in a *closed* row's lease cell is correctly ignored — then run
+   `python3 scripts/watchbill_check.py CLAIMS.md`: it must ERROR ("SILENTLY DISARMED").
    If it stays quiet, stop: your install can't catch what it exists to catch.
 
 4. **Put your first session on the bill**: have it read `PROTOCOL.md`, wire the hooks for
@@ -134,6 +138,9 @@ Nobody, as far as we can find, ships the **assembly**: ownership + record + task
 pulse in one human-legible, zero-infrastructure protocol — nor these four properties:
 
 - a **heartbeat** that flags stale context instead of letting it rot;
+- **settled decisions that strike their own stale asks** — the log is never re-read at session
+  start, so a ruling that lands there has to be carried forward mechanically or the board keeps
+  asking a question that was answered;
 - a **scratchpad that must reconcile and die** instead of accumulating;
 - **fact-vs-decision arbitration** for conflicting entries (facts get measured, decisions
   go to the human);

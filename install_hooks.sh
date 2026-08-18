@@ -29,6 +29,13 @@ if [ -f CLAIMS.md ]; then
   }
 fi
 python3 -m pytest tests/ -q || { echo "watchbill: test suite red — commit blocked"; exit 1; }
+# Watchbill's OWN checkout additionally runs the builder's suite (mutation + battle + adoption)
+# before a commit: this is the tree releases are cut from, and "48 passed" is not evidence that
+# the tests would notice a regression. Adopter repos deliberately skip it — it audits
+# Watchbill's instruments, not your project, and it is far too slow for an ordinary commit.
+if [ -f templates/CLAIMS.md ] && [ -f tests/builders_suite.sh ] && [ -z "${WATCHBILL_BUILDERS:-}" ]; then
+  bash tests/builders_suite.sh || { echo "watchbill: builder's suite NOT CLEAN — commit blocked"; exit 1; }
+fi
 HOOKEOF
 chmod +x "$HOOK"
 echo "watchbill: pre-commit hook installed into $(pwd)/.git/hooks/"

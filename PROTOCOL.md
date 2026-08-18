@@ -44,9 +44,37 @@ Wire your own against `scripts/guard.py`, or rely on the audit.
 ### 1.2 `DIARY.md` — the shared record
 Two sections:
 - `## NOW` — only what is *currently* live. Every item carries
+  `Class: <ACTIVE | WAITING | STANDING | DONE>` and
   `verified: <date> · waiting-on: <the actual blocker>`. At session start, re-stamp what you
   verify; flag anything unverified older than **72 h** as STALE. Finished work is logged
   first, then removed — nothing silently disappears.
+
+  **Class** is one word, and it is machine-read, not decoration — the session-start loader
+  ranks by it when the board outgrows the context budget (§2.1), so an unclassified entry
+  competes for space it may not deserve:
+  **ACTIVE** (or LIVE) work is running now · **WAITING** is blocked on a named party ·
+  **STANDING** is an automated or on-call duty · **DONE/CLOSED/PARKED** is finished and owes
+  a move to `## Log`. No Class means *unknown*, which is treated as possibly-live: liveness
+  is never guessed from the prose.
+
+  **Waiting-on tokens — tag a blocker so its ruling can strike it.** When a `waiting-on:`
+  needs someone else's decision, give it a slug; put the SAME slug on the `## Log` entry that
+  records the decision:
+
+  ```
+  ## NOW   ### some-track … waiting-on: Operator to rule bin/keep {ASK:binkeep-scan-files}
+  ## Log   ### 2026-01-11 — RULED: keep them, they are the prospect corpus {RULED:binkeep-scan-files}
+  ```
+
+  A slug open in `## NOW` **and** resolved in `## Log` is a contradiction: the board still
+  asks for a decision the record shows was made. `scripts/waiting_on.py` finds it, and the
+  session-start loader tells every new session the ask is already settled. **Why it is
+  needed:** `## Log` is never loaded at session start — only `## NOW` is — so a banked ruling
+  does not reach a fresh session, and a settled ask keeps asking. Opt-in and forward-only:
+  untagged clauses behave exactly as before, and **re-opening a settled blocker needs a NEW
+  slug** (the check compares sets, not timelines). ★ **Name the decision, never the answer** —
+  a slug outlives the prose around it, so `-ruling` / `-call` / `-triage`, never a word that
+  states the outcome.
 - `## Log` — **append-only, forever.** Dated entries, tagged with who wrote them. Never
   delete or rewrite a past entry; corrections are new entries that strike the old claim
   loudly and leave it visible. (This rule looks like bureaucracy until the day an
@@ -70,7 +98,11 @@ source of truth for its domain. When you create a new ledger, add a pointer line
 1. **Orient** — read `DIARY.md ## NOW`. Re-stamp what you verify; flag stale items. On
    Claude Code this step is machine-enforced: the SessionStart hook injects `## NOW` into
    context before the first tool call (`hooks/claude-code/session_start_hook.py`), so the
-   board is read from the tree, not from memory.
+   board is read from the tree, not from memory. A board too large to inject whole is
+   **digested, not truncated**: one line per entry, ranked live-first by `Class:` (§1.2),
+   finished entries dropped and counted. Cutting by file position instead of class is how a
+   loader ends up hiding the only three entries that mattered — measured, and the reason the
+   ranking exists.
 2. **Check CLAIMS** — live lease held by another session on your target? STOP, ask the
    Operator. Otherwise **claim**.
 3. **Open your notebook** — objectives before work.
@@ -85,6 +117,41 @@ When your finding contradicts the record, resolve by *kind*:
   `CONFLICT RESOLVED` with the evidence. Never overwrite the other side's entry.
 - A **decision** (a name, an approach, a priority) → do not guess and do not vote. Log
   `CONFLICT — Operator to decide`, flag it in NOW, and wait.
+- A **negative claim** — *"there is no record of X"*, *"the provenance is missing"*, *"that
+  was never measured"* — is a fact claim, and the most expensive kind to get wrong: it sends
+  someone to rebuild what already exists, or to bin what nobody can replace. **Search the
+  RECORDS before you write it** — the index and the ledgers `INDEX.md` points at — not just
+  the filesystem in front of you. Searching the tree you happen to be standing in is not
+  searching the record; *"not on this machine"* reported as *"does not exist"* is the
+  failure this rule exists for.
+
+### 3.1 The settled-clause exception
+
+`## NOW` is owner-only: you edit your own entries. This is the **one** carve-out, and it
+exists because a clause can be settled *in writing* and still nobody is allowed to touch it.
+
+**Any session may strike another's `waiting-on:` clause iff all four hold:**
+
+1. the clause carries a slug whose ruling is banked in `## Log` — i.e. `waiting_on.py`
+   already calls it stale;
+2. the edit touches **only that token** — not the prose, the class, the verified stamp, or
+   the bullets;
+3. attribution stays in the text, so the owner reverses it with one edit;
+4. the strike is recorded in `## Log`.
+
+```sh
+python3 scripts/waiting_on.py --strike --by <session-id>
+```
+
+`--strike` refuses without `--by`: a strike that cannot be attributed is not permitted. It is
+a no-op on a clean board, idempotent on a struck one, and **will not touch a clause with no
+banked ruling** — that is the safety property, and it has a must-not-fire test.
+
+**Why mark the token rather than delete the clause.** A waiting-on often carries more than
+one ask in one sentence — *"(a) rule bin/keep; (b) decide whether to commit"*. Deleting the
+sentence destroys the ask that is still live. **No slug or no banked ruling ⇒ no authority ⇒
+escalate as before**: an untagged clause needs judgment about what someone meant, and that is
+exactly what owner-only protects.
 
 ## 4. The relay — messages between agents
 

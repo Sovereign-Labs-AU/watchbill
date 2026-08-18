@@ -5,7 +5,8 @@ Three hooks connect a Claude Code session to the protocol: the **session-start l
 (liveness is measured, never asserted), and the **guard** (the ownership check before
 writes/edits). Other harnesses wire the same scripts through whatever hook mechanism they
 provide — the adapters here are thin stdin-JSON shims; the logic lives in `scripts/` (the
-session-start loader is self-contained in the adapter — it only reads a file).
+session-start loader carries its own reading and ranking, and reaches into `scripts/` for
+one optional extra — the waiting-on notice — which it omits if the script is absent).
 
 > **All three adapters read the hook's stdin JSON payload** (`session_id` for the guard
 > and heartbeat) — the stable, documented interface. (A harness-version-specific env var
@@ -62,12 +63,23 @@ Session-start loader (`session_start_hook.py`):
 - It **only reads** — it never writes, never blocks. No `DIARY.md`, no `## NOW`, an
   unreadable file, or any error → it prints nothing and exits 0 (fail-open). A brand-new
   repo with no diary yet starts exactly as before.
-- The injected block is bounded (`MAX_CHARS`, truncated with a note if the `## NOW` has
-  grown too large — which is itself a sign finished work should have moved to `## Log`).
-  The cap is calibrated under Claude Code's 10,000-character inline limit for hook
-  output: past that the harness silently persists the context to a file with only a
-  ~2KB preview, and the session never sees the rest — so the loader truncates loudly
-  here rather than letting the harness truncate silently there.
+- The injected block is bounded, and the cap is calibrated under Claude Code's
+  10,000-character inline limit for hook output: past that the harness silently persists
+  the context to a file with only a ~2KB preview, and the session never sees the rest — so
+  the loader cuts loudly here rather than letting the harness cut silently there. The
+  budget is derived from the emit's own preamble, not hardcoded, so editing the wording
+  cannot quietly push the whole emit over the limit.
+- **A board too large to inject whole is DIGESTED, not truncated**: one line per entry (its
+  `### ` header — title, `Class:`, `verified:`, `waiting-on:`), ranked live-first, with
+  finished/parked entries dropped and *counted*. This is not cosmetic. Measured against a
+  real 77-entry board, plain file-order truncation emitted 4 entries and dropped every one
+  of the three live production runs — orienting the session by the least urgent thing on
+  the board. File order is authoring history, not priority. A free-form board with no
+  `### ` entries still falls back to a loud truncation.
+- If `scripts/waiting_on.py` is present, the loader appends one line naming any blocker
+  `## NOW` still asks about that `## Log` has already ruled — the ruling lives in the
+  section nobody loads at session start, so it has to be carried forward mechanically.
+  Missing script, or any error in it, and the loader simply omits that line.
 
 Verdict translation (`guard_hook.py`):
 - `BLOCK` → non-zero exit with the reason on stderr (Claude Code stops the tool call; the

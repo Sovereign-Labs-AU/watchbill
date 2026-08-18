@@ -18,6 +18,8 @@ on:
   workflow_dispatch:
 
 # Least privilege: this workflow only ever reads the tree.
+# Pinned to the majors that run on Node 24: the first run on @v4/@v5 was green but annotated
+# "Node.js 20 is deprecated" — a public repo whose own CI warns on day one is not the message.
 permissions:
   contents: read
 
@@ -35,8 +37,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install pytest (the only dependency, and only for the tests)
@@ -48,8 +50,8 @@ jobs:
     name: builder's suite (mutation, battle, data, adoption)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m pip install --quiet --upgrade pytest

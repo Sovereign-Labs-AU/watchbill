@@ -1,14 +1,17 @@
 # Wiring Watchbill into Claude Code
 
-Three hooks connect a Claude Code session to the protocol: the **session-start loader**
+Five hooks connect a Claude Code session to the protocol: the **session-start loader**
 (injects the live board at session start — the ritual's first step), the **heartbeat**
-(liveness is measured, never asserted), and the **guard** (the ownership check before
-writes/edits). Other harnesses wire the same scripts through whatever hook mechanism they
+(liveness is measured, never asserted), the **guard** (the ownership check before
+writes/edits), the **close-out reminder** (the ritual's last step, which nothing used to
+watch), and the **Operator's view** (the only one that reports to the human). Other harnesses wire the same scripts through whatever hook mechanism they
 provide — the adapters here are thin stdin-JSON shims; the logic lives in `scripts/` (the
-session-start loader is self-contained in the adapter — it only reads a file).
+session-start loader carries its own reading and ranking, and reaches into `scripts/` for two
+optional extras — the waiting-on notice and the dangling-session notice — omitting either if
+its script is absent).
 
-> **All three adapters read the hook's stdin JSON payload** (`session_id` for the guard
-> and heartbeat) — the stable, documented interface. (A harness-version-specific env var
+> **All four adapters read the hook's stdin JSON payload** (`session_id` for the guard,
+> the heartbeat and the close-out reminder) — the stable, documented interface. (A harness-version-specific env var
 > may also exist, but names change between versions; stdin is the contract.) An earlier
 > draft assumed an env var, and the result was a heartbeat that silently never stamped,
 > leaving the guard permanently disarmed while looking wired. The adoption audit caught it
@@ -49,6 +52,15 @@ the `hooks/claude-code/` depth):
           { "type": "command", "command": "python3 hooks/claude-code/guard_hook.py" }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "python3 hooks/claude-code/stop_hook.py", "timeout": 15 },
+          { "type": "command", "command": "python3 hooks/claude-code/operator_hook.py", "timeout": 15 }
+        ]
+      }
     ]
   }
 }
@@ -62,12 +74,50 @@ Session-start loader (`session_start_hook.py`):
 - It **only reads** — it never writes, never blocks. No `DIARY.md`, no `## NOW`, an
   unreadable file, or any error → it prints nothing and exits 0 (fail-open). A brand-new
   repo with no diary yet starts exactly as before.
-- The injected block is bounded (`MAX_CHARS`, truncated with a note if the `## NOW` has
-  grown too large — which is itself a sign finished work should have moved to `## Log`).
-  The cap is calibrated under Claude Code's 10,000-character inline limit for hook
-  output: past that the harness silently persists the context to a file with only a
-  ~2KB preview, and the session never sees the rest — so the loader truncates loudly
-  here rather than letting the harness truncate silently there.
+- The injected block is bounded, and the cap is calibrated under Claude Code's
+  10,000-character inline limit for hook output: past that the harness silently persists
+  the context to a file with only a ~2KB preview, and the session never sees the rest — so
+  the loader cuts loudly here rather than letting the harness cut silently there. The
+  budget is derived from the emit's own preamble, not hardcoded, so editing the wording
+  cannot quietly push the whole emit over the limit.
+- **A board too large to inject whole is DIGESTED, not truncated**: one line per entry (its
+  `### ` header — title, `Class:`, `verified:`, `waiting-on:`), ranked live-first, with
+  finished/parked entries dropped and *counted*. This is not cosmetic. Measured against a
+  real 77-entry board, plain file-order truncation emitted 4 entries and dropped every one
+  of the three live production runs — orienting the session by the least urgent thing on
+  the board. File order is authoring history, not priority. A free-form board with no
+  `### ` entries still falls back to a loud truncation.
+- If `scripts/waiting_on.py` is present, the loader appends one line naming any blocker
+  `## NOW` still asks about that `## Log` has already ruled — the ruling lives in the
+  section nobody loads at session start, so it has to be carried forward mechanically.
+  Missing script, or any error in it, and the loader simply omits that line.
+
+Close-out reminder (`stop_hook.py`):
+- It speaks only when the session actually owes something: a live lease in its name, or an
+  open notebook, with no `## Log` entry from it. A session that owes nothing gets **silence** —
+  a reminder that fires on every stop is noise, and noise gets switched off.
+- **Two channels, and the difference is the point.** `systemMessage` puts it in front of the
+  **Operator** (this is the channel we have verified in production). `decision: "block"` hands
+  the reason back to the **model**, which keeps working instead of stopping — Claude Code's
+  documented Stop-hook contract for returning control to the agent. Wire it, then watch one
+  real stop to confirm the behaviour on your version before you rely on it.
+- **Loop guard:** when Claude Code sets `stop_hook_active` (it is already continuing *because*
+  of a stop hook), this never blocks again — it downgrades to a message. A reminder that
+  re-fires on the turn it caused is not a reminder, it is a trap the agent cannot leave in
+  order to do the work being demanded.
+- **It cannot catch the session that dies.** Nothing can — a crash takes the context with it.
+  That case is caught from the other end: `closeout.py dangling`, surfaced by the session-start
+  loader to whoever arrives next (PROTOCOL.md §2.6).
+
+Operator's view (`operator_hook.py`):
+- Same Stop event as the close-out reminder, deliberately a **separate adapter**, because the
+  two address different people and that is the whole point. The close-out reminder tells the
+  **agent** what it still owes, and may block to get it. This one tells the **Operator** that
+  the ritual has stopped happening, via `systemMessage`, and **never blocks** — it does not
+  argue with the agent, and it never asks the agent to grade itself.
+- Silent when the ritual is being followed. Thresholds live in one block in
+  `scripts/operator_report.py`; tune them to your crew's cadence rather than learning to ignore
+  the report (PROTOCOL.md §6).
 
 Verdict translation (`guard_hook.py`):
 - `BLOCK` → non-zero exit with the reason on stderr (Claude Code stops the tool call; the

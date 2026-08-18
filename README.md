@@ -9,6 +9,8 @@ sharing a single working tree for months.**
 Plain markdown and git. A few small scripts. No server, no database, no vendor, no account.
 Every rule in it exists because we hit the failure it prevents.
 
+[![CI](https://github.com/Sovereign-Labs-AU/watchbill/actions/workflows/ci.yml/badge.svg)](https://github.com/Sovereign-Labs-AU/watchbill/actions/workflows/ci.yml)
+
 From [Sovereign Labs AU](https://sovereignlabs.com.au). Licensed Apache-2.0.
 
 ---
@@ -43,9 +45,12 @@ keeps no state.
 | `INDEX.md` | The front door: pointers only, no data of its own. |
 | *the relay* | Ephemeral agent-to-agent messages: work orders, receipts, handbacks. **Carries work, never truth** — nothing is true until an owning agent writes it into a ledger. |
 
-Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board —
-shipped with a test suite whose fixtures are real production traps, built to prove the
-instruments **catch what they must catch** (see `tests/fixtures/`).
+Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board, a
+close-out check, a waiting-on reconciler, and one report written for the Operator rather than
+the agent that catches a blocker the log has already settled — shipped with a
+test suite whose fixtures are real production traps, built to prove the instruments **catch
+what they must catch** (see `tests/fixtures/`), and whose must-NOT-fire tests prove they stay
+quiet on the cases they must not touch.
 
 **Truth runs vertically and stays; messages run horizontally and vanish.**
 
@@ -113,12 +118,18 @@ Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned t
    from the Watchbill source checkout by mistake — because an earlier version, run from
    there, silently protected the wrong repo while printing success.
 
-3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `22 passed` in the Watchbill checkout, `21 passed, 1 skipped`
+3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `71 passed` in the Watchbill checkout, `69 passed, 2 skipped`
    in your repo (the skip is the template-source check, which lives only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
    shipped traps are supposed to be caught, not to turn your suite red. To watch a trap
-   fire live, put prose inside a `Lease-until` cell in your own `CLAIMS.md` and run
-   `python3 scripts/watchbill_check.py CLAIMS.md` — it must ERROR ("SILENTLY DISARMED").
+   fire live, put prose inside the `Lease-until` cell of a **live** row in your own
+   `CLAIMS.md` — claim a track first, since the shipped rows are all released examples and
+   prose in a *closed* row's lease cell is correctly ignored — then run
+   `python3 scripts/watchbill_check.py CLAIMS.md`: it must ERROR ("SILENTLY DISARMED").
    If it stays quiet, stop: your install can't catch what it exists to catch.
+   (Watchbill's own runs are public: the CI badge above covers the unit suite on four
+   Python versions plus the builder's suite — mutation, battle, data and a replayed
+   cold-adopter install. You should not have to clone a repo to see whether its
+   instruments still fail when they should.)
 
 4. **Put your first session on the bill**: have it read `PROTOCOL.md`, wire the hooks for
    your harness (`hooks/claude-code/README.md` for Claude Code — then verify the heartbeat
@@ -134,10 +145,19 @@ Nobody, as far as we can find, ships the **assembly**: ownership + record + task
 pulse in one human-legible, zero-infrastructure protocol — nor these four properties:
 
 - a **heartbeat** that flags stale context instead of letting it rot;
+- **settled decisions that strike their own stale asks** — the log is never re-read at session
+  start, so a ruling that lands there has to be carried forward mechanically or the board keeps
+  asking a question that was answered;
 - a **scratchpad that must reconcile and die** instead of accumulating;
+- a **close-out that is checked from both ends** — the leaving session is reminded of what it
+  still owes, and because a crashed session cannot be reminded of anything, the *next* session
+  is told who left work behind;
 - **fact-vs-decision arbitration** for conflicting entries (facts get measured, decisions
   go to the human);
-- **multi-vendor agents under one human takeover authority**.
+- **multi-vendor agents under one human takeover authority**;
+- **one instrument that reports to the human, not to the agent** — every surface here is
+  written by the agent, so without it the Operator's whole picture of compliance is mediated
+  by the thing being audited.
 
 ---
 

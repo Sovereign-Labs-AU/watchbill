@@ -1,0 +1,64 @@
+# Watchbill CI — the cross-clone line.
+#
+# WHY THIS EXISTS: the pre-commit hook from `install_hooks.sh` lives in `.git/hooks`, which is
+# PER-CLONE and UNVERSIONED. So it protects the person who installed it and nobody else — not a
+# contributor's pull request, not a merge made in the GitHub web UI, not a fresh clone. This
+# repo ships a test-gate and tells adopters "the suite must pass"; running it only where
+# somebody remembered to install it would make that a gate that never ran.
+#
+# NOTE FOR ADOPTERS: this is CI for THIS repository's own development. Watchbill itself needs
+# no server, no runner and no account — the protocol is markdown and a few stdlib scripts. You
+# do not inherit this file by copying the kit, and nothing in the Quickstart depends on it.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: this workflow only ever reads the tree.
+permissions:
+  contents: read
+
+# A superseded push should not burn a runner finishing an answer nobody is waiting for.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: suite (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false        # one version failing must not hide the others' results
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      # Action majors pinned to the ones running on Node 24: the first run here was green but
+      # annotated "Node.js 20 is deprecated". A public repo whose own CI warns on day one is
+      # not the message, and a deprecation left alone turns red later on someone else's clock.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install pytest (the only dependency, and only for the tests)
+        run: python -m pip install --quiet --upgrade pytest
+      - name: Unit suite
+        run: python -m pytest tests/ -q
+
+  builders:
+    name: builder's suite (mutation, battle, data, adoption)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet --upgrade pytest
+      # The audit that the unit suite cannot perform on itself: it breaks each behaviour on a
+      # copy and requires the suite to go RED. A green suite is not evidence until you have
+      # watched it fail for the right reason — three tests in this repo once passed for the
+      # wrong one. It also replays the cold-adopter Quickstart end to end.
+      - name: Builder's suite
+        run: bash tests/builders_suite.sh

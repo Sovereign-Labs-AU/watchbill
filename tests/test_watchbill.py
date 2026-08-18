@@ -728,3 +728,157 @@ def test_dangling_ignores_a_session_that_never_had_a_pulse(tmp_path):
     beats.write_text(json.dumps({"s-somebody-else-0009": {
         "last_active": (NOW - timedelta(minutes=5)).isoformat(timespec="seconds")}}))
     assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW) == []
+
+
+# ================================================================ the Operator's view (PROTOCOL.md §6)
+import operator_report                                    # noqa: E402
+
+
+def board(tmp_path, now_line=None, log_line=None, claims=None):
+    """A minimal, COMPLIANT tree. Each test breaks exactly one thing — so a finding can only
+    come from the thing that test broke."""
+    today = NOW.strftime("%Y-%m-%d")
+    (tmp_path / "DIARY.md").write_text(
+        "# Diary\n\n## NOW\n\n"
+        + (now_line or f"### live-track — Class: ACTIVE. verified: {today} · waiting-on: —\n- fact\n")
+        + "\n## Log\n\n"
+        + (log_line or f"### {today} — [Model-1] (session `s-worker-0001`) did the thing\n"))
+    (tmp_path / "CLAIMS.md").write_text(claims if claims is not None else CLAIMS_LIVE)
+    (tmp_path / "notebooks").mkdir(exist_ok=True)
+    nb = tmp_path / "notebooks" / "notebook_2026-01-10_x.md"
+    nb.write_text("**Session:** `s-worker-0001`\n\n## Objective\nDo the thing.\n")
+    import os
+    os.utime(nb, (NOW.timestamp(), NOW.timestamp()))
+    return tmp_path
+
+
+def test_operator_report_is_silent_on_a_compliant_board(tmp_path):
+    # MUST-NOT-FIRE, and it is the load-bearing test for this whole file: an advisory report
+    # that speaks when nothing is wrong is noise, and noise gets switched off.
+    w = board(tmp_path)
+    assert operator_report.audit(w, "s-worker-0001", NOW) == []
+    assert "compliant" in operator_report.render([])
+
+
+def test_operator_report_catches_the_abandoned_notebook(tmp_path):
+    import os
+    w = board(tmp_path)
+    nb = w / "notebooks" / "notebook_2026-01-10_x.md"
+    old = (NOW - timedelta(hours=72)).timestamp()
+    os.utime(nb, (old, old))
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert codes == ["notebook-stale"]
+
+
+def test_operator_report_judges_now_freshness_on_its_own(tmp_path):
+    """The bug that let this instrument pass a drifted session: it only fired when a `## Log`
+    entry existed for TODAY, so logging under yesterday's date slipped through. `## NOW`'s
+    freshness is its own property — and the finding must SAY how many Log entries were appended
+    while the board sat still, because that contrast is the actual signal."""
+    stale_now = "### live-track — Class: ACTIVE. verified: 2020-01-01 · waiting-on: —\n- fact\n"
+    w = board(tmp_path, now_line=stale_now)
+    items = operator_report.audit(w, "s-worker-0001", NOW)
+    codes = [i["code"] for i in items]
+    assert "now-not-refreshed" in codes and "unflagged-stale" in codes
+    msg = next(i["msg"] for i in items if i["code"] == "now-not-refreshed")
+    assert "1 `## Log` entry were appended" in msg or "1 `## Log` entry was" in msg or "entr" in msg
+
+
+def test_operator_report_respects_an_explicit_stale_flag(tmp_path):
+    # MUST-NOT-FIRE: an item already marked STALE has been dealt with honestly. Flagging it
+    # again punishes the exact behaviour the protocol asks for.
+    flagged = ("### live-track — Class: ACTIVE. verified: 2020-01-01 STALE — unverified since "
+               "2020-01-01 · waiting-on: —\n- fact\n"
+               f"### other — Class: ACTIVE. verified: {NOW.strftime('%Y-%m-%d')}\n- fact\n")
+    w = board(tmp_path, now_line=flagged)
+    assert [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)] == []
+
+
+def test_operator_report_catches_work_with_nothing_logged(tmp_path):
+    w = board(tmp_path, log_line="### 2020-01-01 — an ancient entry\n")
+    for i in range(5):
+        (w / f"file{i}.py").write_text("x = 1\n")
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert "work-not-logged" in codes
+
+
+def test_operator_report_does_not_call_an_idle_repo_unlogged(tmp_path):
+    # MUST-NOT-FIRE: no Log entry AND no work is a quiet week, not a drifted session.
+    w = board(tmp_path, log_line="### 2020-01-01 — an ancient entry\n")
+    import os
+    old = (NOW - timedelta(days=30)).timestamp()
+    for p in (w / "CLAIMS.md", w / "notebooks" / "notebook_2026-01-10_x.md"):
+        os.utime(p, (old, old))
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert "work-not-logged" not in codes
+
+
+def test_operator_report_warns_before_a_lease_lapses_not_after(tmp_path):
+    # The checker already reports rows that HAVE expired. This is the warning beforehand —
+    # the point at which renewing is still a choice.
+    soon = (NOW + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+    claims = CLAIMS_LIVE.replace("| 2026-01-20 |", f"| {soon} |")
+    w = board(tmp_path, claims=claims)
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert "lease-lapsing" in codes
+    # ...and a comfortable lease must NOT be nagged about
+    w2 = board(tmp_path, claims=CLAIMS_LIVE)
+    assert "lease-lapsing" not in [i["code"] for i in operator_report.audit(w2, "s-worker-0001", NOW)]
+
+
+def test_operator_report_is_line_anchored_against_prose_about_the_rule(tmp_path):
+    """The bug that made this instrument audit 900 characters of documentation: an unanchored
+    search matched PROSE ABOUT `## NOW` before the section itself. An instrument that cannot
+    tell a rule from its own description reports confidently about nothing."""
+    today = NOW.strftime("%Y-%m-%d")
+    (tmp_path / "DIARY.md").write_text(
+        "# Diary\n\n> Read the `## NOW` section first; `## Log` is append-only.\n"
+        "> Items in `## NOW` carry verified: 2020-01-01 as an example of the format.\n\n"
+        f"## NOW\n\n### t — Class: ACTIVE. verified: {today}\n- fact\n\n"
+        f"## Log\n\n### {today} — entry\n")
+    (tmp_path / "CLAIMS.md").write_text(CLAIMS_LIVE)
+    (tmp_path / "notebooks").mkdir(exist_ok=True)
+    assert operator_report.audit(tmp_path, "", NOW) == []
+
+
+def test_operator_report_thresholds_are_tunable_not_hardcoded(tmp_path):
+    # The stated escape hatch must actually work: a crew with a weekly cadence changes the
+    # number instead of learning to ignore the report.
+    import os
+    w = board(tmp_path)
+    nb = w / "notebooks" / "notebook_2026-01-10_x.md"
+    old = (NOW - timedelta(hours=72)).timestamp()
+    os.utime(nb, (old, old))
+    loose = dict(operator_report.THRESHOLDS, notebook_stale_hours=24 * 7)
+    assert [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW, loose)] == []
+
+
+def today_board(tmp_path, **kw):
+    """The hook runs in a SUBPROCESS, which cannot see the frozen test clock — so a hook test
+    must build its tree against the real one. (Built against the frozen clock first, and the
+    'silent when compliant' test failed for that reason alone: the fixture was seven months
+    stale, not the code.)"""
+    real = datetime.now()
+    today = real.strftime("%Y-%m-%d")
+    kw.setdefault("now_line", f"### live-track — Class: ACTIVE. verified: {today} · waiting-on: —\n- fact\n")
+    kw.setdefault("log_line", f"### {today} — [Model-1] (session `s-worker-0001`) did the thing\n")
+    w = board(tmp_path, **kw)
+    import os
+    os.utime(w / "notebooks" / "notebook_2026-01-10_x.md", (real.timestamp(), real.timestamp()))
+    return w
+
+
+def test_operator_hook_reports_to_the_operator_and_never_blocks(tmp_path):
+    w = today_board(tmp_path, log_line="### 2020-01-01 — ancient\n",
+                    now_line="### t — Class: ACTIVE. verified: 2020-01-01\n- fact\n")
+    r = run_hook_cwd("operator_hook.py", {"session_id": "s-worker-0001"}, w)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)
+    assert "systemMessage" in out and "addressed to YOU" in out["systemMessage"]
+    assert "decision" not in out, "the Operator's view is advisory — it must never block"
+
+
+def test_operator_hook_is_silent_when_the_ritual_is_being_followed(tmp_path):
+    w = today_board(tmp_path)
+    r = run_hook_cwd("operator_hook.py", {"session_id": "s-worker-0001"}, w)
+    assert r.returncode == 0 and r.stdout.strip() == ""

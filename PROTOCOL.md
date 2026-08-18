@@ -206,7 +206,39 @@ too. (ARMED means the conditions hold, not that a blocker is wired: file-glob en
 ships in `guard.py` + the hook adapter; resource-row enforcement is audit-only until you
 wire an adapter — §1.1.)
 
-## 6. Honest scope
+## 6. The Operator's view
+
+Every surface in this protocol is **written by the agent**, and every check so far reports
+**back to the agent**: the session-start loader, the guard, the close-out check, the dangling
+notice. So the Operator — §0's sole authority — has no independent read on whether the process
+is being followed. Their whole picture is mediated by the thing being audited, and if an
+agent's ledger discipline drifts, the Operator's picture drifts with it and nothing anywhere
+disagrees.
+
+`python3 scripts/operator_report.py [--session <id>]` closes that. It reads the same surfaces
+and answers a different question — not *did you break a rule I can see*, but **is the ritual
+still happening**:
+
+- a session holding work with no notebook, or a notebook abandoned while work continued;
+- `## NOW` not refreshed, especially while `## Log` entries were appended — the contrast is the
+  signal, and `## NOW`'s freshness is judged as its own property, never inferred from the Log;
+- items past the 72 h rule (§1.2) that are not flagged STALE — a board asserting freshness it
+  does not have;
+- work with nothing written down at all;
+- a lease about to lapse, while renewing is still a choice.
+
+**It is advisory and it never blocks.** What makes it worth having is the AUDIENCE, not the
+enforcement: this file's own line is that the protocol does not police, it makes violations
+visible — and this makes them visible to the one party with the authority to act, who is also
+the only party that has not stopped reading.
+
+★ **Tune it, do not route around it.** Every threshold sits in one `THRESHOLDS` block, because
+this is the most opinionated instrument in the kit: it encodes a working *cadence*, and a crew
+with a weekly rhythm would be flagged every Monday by a daily one. If a check does not fit how
+you work, change the number or drop the check. A report that cries wolf gets ignored, and then
+it protects nothing.
+
+## 7. Honest scope
 
 This protocol is **advisory infrastructure with enforcement hooks**, not a sandbox. A
 determined or malfunctioning agent can ignore it. The close-out check (§2.6) is the clearest

@@ -9,4 +9,5 @@
 | Who owns which track? | [CLAIMS.md](CLAIMS.md) — audit with `scripts/watchbill_check.py` |
 | What is each session working on? | `scripts/notebook_board.py` |
 | Which blockers has the log already settled? | `scripts/waiting_on.py` |
+| Is the ritual still being followed? (for the Operator) | `scripts/operator_report.py` |
 | (add your project's ledgers here) | … |

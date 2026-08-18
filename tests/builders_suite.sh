@@ -64,6 +64,7 @@ check_rc "unreadable file"   2 python3 scripts/waiting_on.py "$WORK/nope.md"
 check_rc "--strike w/o --by" 2 python3 scripts/waiting_on.py "$WORK/stale.md" --strike
 check_rc "closeout check, no --session" 2 python3 scripts/closeout.py check
 check_rc "closeout dangling, clean tree"  0 python3 scripts/closeout.py dangling --heartbeats "$WORK/none.json"
+check_rc "operator report, no diary"      0 python3 scripts/operator_report.py --root "$WORK"
 
 # ---------------------------------------------------------------- 2. MEASUREMENT (gold-check)
 say "2. MEASUREMENT — mutation audit (each mutant MUST turn the suite red)"
@@ -90,6 +91,7 @@ HOOK=hooks/claude-code/session_start_hook.py
 WON=scripts/waiting_on.py
 NB=scripts/notebook_board.py
 CO=scripts/closeout.py
+OR=scripts/operator_report.py
 
 mutate "ranking removed (board cut by file order again)" "$HOOK" \
   '    ranked.sort(key=lambda t: t[0])' '    pass'
@@ -127,6 +129,18 @@ mutate "dangling ignores whether the session logged" "$CO" \
             continue' '        pass'
 mutate "stop hook loses its loop guard" "hooks/claude-code/stop_hook.py" \
   '        if already_continuing:' '        if False:'
+mutate "operator report speaks on a compliant board (noise)" "$OR" \
+  '    if not any(d in now_block for d in fresh):' '    if True:'
+mutate "operator report ignores an explicit STALE flag" "$OR" \
+  '                        if m and "STALE" not in line' '                        if m'
+mutate "operator report un-anchors its section match" "$OR" \
+  '    m_now = re.search(r"^## NOW", text, re.M)' '    m_now = re.search(r"## NOW", text)'
+mutate "operator hook starts blocking the agent" "hooks/claude-code/operator_hook.py" \
+  '        out = r.stdout.strip()
+        if out:
+            print(out)' '        out = r.stdout.strip()
+        if out:
+            print(out.replace("{", "{\"decision\": \"block\", ", 1))'
 mutate "notebook board flags every session" "$NB" \
   '        if any(joins(sid, s) for s in sessions_on_board):
             continue' '        pass'

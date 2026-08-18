@@ -1,10 +1,10 @@
 # Wiring Watchbill into Claude Code
 
-Four hooks connect a Claude Code session to the protocol: the **session-start loader**
+Five hooks connect a Claude Code session to the protocol: the **session-start loader**
 (injects the live board at session start — the ritual's first step), the **heartbeat**
 (liveness is measured, never asserted), the **guard** (the ownership check before
-writes/edits), and the **close-out reminder** (the ritual's last step, which nothing used to
-watch). Other harnesses wire the same scripts through whatever hook mechanism they
+writes/edits), the **close-out reminder** (the ritual's last step, which nothing used to
+watch), and the **Operator's view** (the only one that reports to the human). Other harnesses wire the same scripts through whatever hook mechanism they
 provide — the adapters here are thin stdin-JSON shims; the logic lives in `scripts/` (the
 session-start loader carries its own reading and ranking, and reaches into `scripts/` for two
 optional extras — the waiting-on notice and the dangling-session notice — omitting either if
@@ -57,7 +57,8 @@ the `hooks/claude-code/` depth):
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "python3 hooks/claude-code/stop_hook.py", "timeout": 15 }
+          { "type": "command", "command": "python3 hooks/claude-code/stop_hook.py", "timeout": 15 },
+          { "type": "command", "command": "python3 hooks/claude-code/operator_hook.py", "timeout": 15 }
         ]
       }
     ]
@@ -107,6 +108,16 @@ Close-out reminder (`stop_hook.py`):
 - **It cannot catch the session that dies.** Nothing can — a crash takes the context with it.
   That case is caught from the other end: `closeout.py dangling`, surfaced by the session-start
   loader to whoever arrives next (PROTOCOL.md §2.6).
+
+Operator's view (`operator_hook.py`):
+- Same Stop event as the close-out reminder, deliberately a **separate adapter**, because the
+  two address different people and that is the whole point. The close-out reminder tells the
+  **agent** what it still owes, and may block to get it. This one tells the **Operator** that
+  the ritual has stopped happening, via `systemMessage`, and **never blocks** — it does not
+  argue with the agent, and it never asks the agent to grade itself.
+- Silent when the ritual is being followed. Thresholds live in one block in
+  `scripts/operator_report.py`; tune them to your crew's cadence rather than learning to ignore
+  the report (PROTOCOL.md §6).
 
 Verdict translation (`guard_hook.py`):
 - `BLOCK` → non-zero exit with the reason on stderr (Claude Code stops the tool call; the

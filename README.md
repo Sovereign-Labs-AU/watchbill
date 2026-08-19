@@ -161,4 +161,7 @@ pulse in one human-legible, zero-infrastructure protocol — nor these four prop
 
 ---
 
+Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) — the bar is a must-catch test, a
+must-not-fire test, and a mutant that proves the suite would notice.
+
 *The diary wins on any conflict with this page.*

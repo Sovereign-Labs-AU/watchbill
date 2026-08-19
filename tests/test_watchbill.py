@@ -882,3 +882,95 @@ def test_operator_hook_is_silent_when_the_ritual_is_being_followed(tmp_path):
     w = today_board(tmp_path)
     r = run_hook_cwd("operator_hook.py", {"session_id": "s-worker-0001"}, w)
     assert r.returncode == 0 and r.stdout.strip() == ""
+
+
+# ================================================================ outward surfaces (PROTOCOL.md §1.1)
+def test_url_in_a_track_globs_cell_errors(tmp_path):
+    """MUST-CATCH: a glob can only match a path, so a repo/domain/bucket in a track row's Globs
+    cell is a row that looks protected and is not — the same silent-disarm class as prose in a
+    Lease-until cell, and the mistake that adding outward surfaces invites."""
+    errors, flags, _ = audit(FIX / "claims_wrong_table.md", beats_file(tmp_path, ["s-live-0001"]), NOW)
+    assert any("protects nothing while looking protected" in e for e in errors)
+    assert any("Resources table" in e for e in errors)
+
+
+def test_a_real_outward_surface_row_is_audited_like_any_other(tmp_path):
+    # A URL in the RESOURCES table is correct, and must arm exactly like a host row does.
+    claims = tmp_path / "CLAIMS.md"
+    claims.write_text(
+        "| Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        "| the-track | src/** | Human | s-live-0001 | Model-1 | 2026-01-09 | 2026-01-20 | live |\n"
+        "\n## Resources\n\n"
+        "| Resource | Match | Owner | Session | Claimed | Lease-until | Note |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| public repo | https://github.com/example-org/example-repo | Human | s-live-0001 | 2026-01-09 | 2026-01-20 | outward |\n")
+    errors, flags, report = audit(claims, beats_file(tmp_path, ["s-live-0001"]), NOW)
+    assert errors == [] and flags == []
+    assert any("ARMED" in r and "NOT ARMED" not in r and "public repo" in r for r in report)
+
+
+def test_a_file_glob_in_a_resource_row_is_flagged(tmp_path):
+    # The mirror-image mistake: a path pattern filed as a resource, where nothing will use it.
+    claims = tmp_path / "CLAIMS.md"
+    claims.write_text(
+        "## Resources\n\n"
+        "| Resource | Match | Owner | Session | Claimed | Lease-until | Note |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| mis-filed | src/**; docs/** | Human | s-live-0001 | 2026-01-09 | 2026-01-20 | live |\n")
+    _, flags, _ = audit(claims, beats_file(tmp_path, ["s-live-0001"]), NOW)
+    assert any("belong in the Tracks table" in f for f in flags)
+
+
+def test_ordinary_globs_and_hosts_are_never_flagged(tmp_path):
+    """MUST-NOT-FIRE, and the load-bearing test of the pair: `src/**` is not a URL and
+    `buildbox.local` is not a glob. A check that cannot tell them apart makes every row noisy,
+    and a noisy checker is one nobody reads."""
+    errors, flags, _ = audit(FIX / "claims_clean.md", beats_file(tmp_path, ["s-live-0001"]), NOW)
+    assert errors == [] and flags == []
+
+
+# ================================================================ the board's own errors get a reader
+BROKEN_CLAIMS = (
+    "| Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+    "| t | src/** | Human | s-live-0001 | Model-1 | 2026-01-09 | when the sprint ends | LIVE |\n")
+
+
+def test_session_start_names_structural_claims_errors(tmp_path):
+    """The gap: the checker is run by whoever remembers, plus a pre-commit hook that only fires
+    for commits touching claims code — so an error made by a session that never touches it sits
+    unread, while the row protects nothing and looks protected. Measured: one sat a full day."""
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    (tmp_path / "CLAIMS.md").write_text(BROKEN_CLAIMS)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0013"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "STRUCTURAL ERROR" in ctx and "watchbill_check.py" in ctx
+    assert "Operator's call" in ctx      # naming it is not licence to rewrite another's row
+
+
+def test_session_start_is_silent_on_a_structurally_clean_board(tmp_path):
+    """MUST-NOT-FIRE, and the load-bearing half: ERRORS only. A live board carries standing
+    FLAGs — expired leases, releases pending a decision — and repeating those every session
+    start is noise, after which the line is ignored entirely."""
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    (tmp_path / "CLAIMS.md").write_text(FIX.joinpath("claims_expired.md").read_text())  # FLAGs, no ERRORs
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0014"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "STRUCTURAL ERROR" not in ctx
+
+
+def test_session_start_survives_having_no_claims_file_at_all(tmp_path):
+    # Fail-open: a repo mid-adoption has a diary and no CLAIMS.md yet.
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0015"}, tmp_path)
+    assert r.returncode == 0 and "STRUCTURAL ERROR" not in r.stdout
+
+
+def test_operator_report_carries_the_boards_own_errors(tmp_path):
+    w = board(tmp_path, claims=BROKEN_CLAIMS)
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert "claims-structural-error" in codes
+    # ...and a clean board must not raise it
+    w2 = board(tmp_path, claims=CLAIMS_LIVE)
+    assert "claims-structural-error" not in [i["code"] for i in operator_report.audit(w2, "s-worker-0001", NOW)]

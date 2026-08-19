@@ -22,3 +22,4 @@
 | Resource | Match | Owner | Session | Claimed | Lease-until | Note |
 | --- | --- | --- | --- | --- | --- | --- |
 | example-build-box (synthetic — RELEASED example) | buildbox.local; 10.0.0.99 | — | RELEASED — synthetic example row | 2026-01-01 | | A live resource row carries a real session id + a future BARE date (prose in the Lease-until cell disarms the guard — the checker errors on it). |
+| example-public-repo (synthetic — RELEASED example) | https://github.com/example-org/example-repo | — | RELEASED — synthetic example row | 2026-01-01 | | An OUTWARD SURFACE: a repo, domain, bucket or account. Not a file, so no glob can cover it — publishing, releasing and metadata edits are Operator-authorized AND recorded here (PROTOCOL.md §1.1). |

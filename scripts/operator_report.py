@@ -197,6 +197,21 @@ def audit(root, session, now, th=None):
                                            f"— renew it or release it; a lapsed lease looks like "
                                            f"an abandoned track to everyone else"})
                     break
+    # 6. the BOARD itself, not just this session. A structural CLAIMS error disarms enforcement
+    #    on those rows, and nothing reports it unless somebody runs the checker or commits claims
+    #    code — so it reaches the Operator here. ERRORS only: standing FLAGs are the known
+    #    backlog, and repeating them every turn would bury this line.
+    try:
+        from watchbill_check import audit as claims_audit
+        errs, _f, _r = claims_audit(root / "CLAIMS.md", root / ".watchbill/heartbeats.json", now)
+        if errs:
+            out.append({"code": "claims-structural-error",
+                        "msg": f"CLAIMS.md carries {len(errs)} structural error(s) — enforcement is "
+                               f"disarmed on those rows, and no check reports it unless someone runs "
+                               f"the checker: {errs[0][:120]}"})
+    except Exception:
+        pass          # advisory extra: never break the report over the board's own state
+
     return out
 
 

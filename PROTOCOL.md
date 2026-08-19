@@ -35,11 +35,30 @@ Rules:
 8. **Lease-until is a bare date** (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`). Prose in that cell
    breaks date parsing and silently disarms enforcement. The checker errors on it.
 
-A second table with the same lease rules covers **resources** (machines, drives, long-running
-boxes), bringing them under the same lease discipline. Honest scope: the shipped guard core
-enforces **file globs only**; resource rows are **audited** — the checker reports each live row
-ARMED or NOT ARMED (§5) — and a shell/host enforcement adapter is deliberately not shipped yet.
-Wire your own against `scripts/guard.py`, or rely on the audit.
+A second table with the same lease rules covers **resources** — machines, drives, long-running
+boxes, **and outward surfaces**: a repository, a domain, a bucket, an account. Anything ownable
+that is **not a file on disk**. `Match` takes hosts, URLs, `user@host`, or mount-path prefixes.
+
+★ **Why outward surfaces need a row at all, when §0 already reserves publishing for the
+Operator.** A glob can only ever match a path, so the moment work leaves the disk — a push, a
+release, a visibility change, an edit to public metadata — **no row describes who is holding
+it**. The authority rule exists and the ownership record does not, and that mismatch is
+load-bearing in exactly the wrong direction: a file edit is reversible with git, while
+publishing is not. So:
+
+**Outward actions — publish · make public · release · push to a public remote · change public
+metadata or DNS — are Operator-authorized (§0) AND recorded against a resource row.** Both, not
+either. Putting an outward surface in a *track* row's Globs cell instead is the mistake this
+invites, and it fails silently: the guard matches paths, so the row protects nothing while
+looking protected. The checker errors on it.
+
+Honest scope: the shipped guard core enforces **file globs only**; resource rows are
+**audited** — the checker reports each live row ARMED or NOT ARMED (§5) — and a shell/host
+enforcement adapter is deliberately not shipped yet. That is a considered choice, not a gap
+waiting to be filled: intercepting `gh`, `git push`, `aws` or `wrangler` means pattern-matching
+shell, which is fragile and noisy, and a noisy gate gets routed around until it protects
+nothing. What a resource row buys is **visible ownership**, which is what was actually missing.
+Wire your own adapter against `scripts/guard.py` if you need a block.
 
 ### 1.2 `DIARY.md` — the shared record
 Two sections:
@@ -102,7 +121,12 @@ source of truth for its domain. When you create a new ledger, add a pointer line
    **digested, not truncated**: one line per entry, ranked live-first by `Class:` (§1.2),
    finished entries dropped and counted. Cutting by file position instead of class is how a
    loader ends up hiding the only three entries that mattered — measured, and the reason the
-   ranking exists.
+   ranking exists. The loader also names anything the board itself is carrying that nobody is
+   reading: waiting-on clauses the Log has already ruled (§1.2), sessions that left work behind
+   (§2.6), and **structural errors in `CLAIMS.md`** — errors only, because a live board always
+   carries standing flags and repeating those at every start is noise. A malformed row protects
+   nothing while looking protected, and until now nothing reported one unless somebody happened
+   to run the checker.
 2. **Check CLAIMS** — live lease held by another session on your target? STOP, ask the
    Operator. Otherwise **claim**.
 3. **Open your notebook** — objectives before work.
@@ -225,7 +249,9 @@ still happening**:
 - items past the 72 h rule (§1.2) that are not flagged STALE — a board asserting freshness it
   does not have;
 - work with nothing written down at all;
-- a lease about to lapse, while renewing is still a choice.
+- a lease about to lapse, while renewing is still a choice;
+- **structural errors in `CLAIMS.md` itself** — enforcement disarmed on those rows, made by any
+  session, reported to the one person who can rule on somebody else's row.
 
 **It is advisory and it never blocks.** What makes it worth having is the AUDIENCE, not the
 enforcement: this file's own line is that the protocol does not police, it makes violations

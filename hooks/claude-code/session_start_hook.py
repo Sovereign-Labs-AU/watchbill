@@ -202,6 +202,36 @@ def dangling_notice():
         return ""
 
 
+def claims_errors_notice():
+    """One line when `CLAIMS.md` carries STRUCTURAL ERRORS — silent when it does not.
+
+    The checker is only ever run by whoever remembers to run it (and by the pre-commit hook,
+    for commits that touch claims code). So an error introduced by a session that never touches
+    that code sits unread — and a malformed row protects nothing while looking protected, which
+    is the failure this whole kit exists to make visible. Measured in production: one such row
+    sat for a day, found only when it happened to block an unrelated commit. The detector had
+    worked from the first minute; nothing was reading it.
+
+    ★ ERRORS ONLY. A live board carries standing FLAGs — expired leases, releases pending a
+    decision — and repeating those at every session start is noise, after which the line is
+    ignored entirely. An ERROR means enforcement is disarmed RIGHT NOW; zero is the normal
+    state, so this almost never appears. Fail-open like every other notice here."""
+    try:
+        here = str(Path(__file__).resolve().parents[2] / "scripts")
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        from watchbill_check import audit
+        errors, _flags, _report = audit(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"))
+        if not errors:
+            return ""
+        return (f"NOTE — CLAIMS.md has {len(errors)} STRUCTURAL ERROR(S): enforcement is disarmed "
+                f"on those rows right now, whoever wrote them. First: {errors[0][:160]} "
+                f"-> run `python3 scripts/watchbill_check.py CLAIMS.md`. Naming it is not the same "
+                f"as fixing another session's row — that is the Operator's call (§1.1 rule 5).")
+    except Exception:
+        return ""
+
+
 PREAMBLE_WHOLE = (
     "SESSION-START RITUAL (Watchbill PROTOCOL.md §2, non-negotiable): the live state of "
     "play from this repo's `DIARY.md` `## NOW` is below. Read it before acting — do not "
@@ -274,7 +304,8 @@ def main():
         now = extract_now(text)
         if not now:
             return 0  # no ## NOW block to load
-        context = build_context(now, stale_waiting_on(text), dangling_notice())
+        context = build_context(now, stale_waiting_on(text), dangling_notice(),
+                                claims_errors_notice())
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",

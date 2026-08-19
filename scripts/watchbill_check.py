@@ -32,6 +32,13 @@ CLOSED_MARKERS = re.compile(
 LIVE_HINTS = re.compile(r"\b(LIVE|RUNNING|ACTIVE|in progress)\b", re.IGNORECASE)
 HEARTBEAT_FRESH_MINUTES = 30
 
+# An outward surface — a repo, a domain, a bucket, an account — belongs in the RESOURCES table,
+# because a glob can only ever match a path on disk. Putting one in a track row's Globs cell is
+# the mistake this invites, and it is silent: the guard matches nothing, so the row looks
+# protected and is not. Same failure shape as prose in a Lease-until cell.
+URLISH = re.compile(r"^(https?://|git@|ssh://|s3://|gs://|r2://)", re.IGNORECASE)
+HOSTISH = re.compile(r"^[\w.-]+\.[a-z]{2,}(/|$)|^[\w.-]+@|^\d{1,3}(\.\d{1,3}){3}", re.IGNORECASE)
+
 TRACK_COLS = 8      # | Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |
 RESOURCE_COLS = 7   # | Resource | Match | Owner | Session | Claimed | Lease-until | Note |
 
@@ -137,6 +144,25 @@ def audit(claims_path: Path, beats_path: Path, now: datetime | None = None):
 
         if closed:
             continue  # released/parked/placeholder rows have no owner to protect — silence is correct
+
+        # The two tables are not interchangeable, and putting a row in the wrong one disarms it
+        # silently — the whole class this checker exists for.
+        match_cell = cells[1]
+        entries = [e.strip() for e in match_cell.split(";") if e.strip()]
+        if table == "tracks" and entries and all(URLISH.match(e) for e in entries):
+            errors.append(
+                f"line {n} [{name[:50]}]: Globs {match_cell[:50]!r} is a URL, not a file pattern — "
+                "the guard matches PATHS, so this row protects nothing while looking protected. "
+                "An outward surface (repo, domain, bucket, account) belongs in the Resources table."
+            )
+            continue
+        if table == "resources" and entries and any("*" in e for e in entries) \
+                and not any(URLISH.match(e) or HOSTISH.match(e) for e in entries):
+            flags.append(
+                f"line {n} [{name[:50]}]: Match {match_cell[:50]!r} looks like a file glob, not a "
+                "resource identifier — resource rows match hosts, URLs and mount paths; file "
+                "patterns belong in the Tracks table."
+            )
 
         if lease_cell and lease is None:
             errors.append(

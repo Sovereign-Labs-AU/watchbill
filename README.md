@@ -118,7 +118,7 @@ Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned t
    from the Watchbill source checkout by mistake — because an earlier version, run from
    there, silently protected the wrong repo while printing success.
 
-3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `71 passed` in the Watchbill checkout, `69 passed, 2 skipped`
+3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `79 passed` in the Watchbill checkout, `77 passed, 2 skipped`
    in your repo (the skip is the template-source check, which lives only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
    shipped traps are supposed to be caught, not to turn your suite red. To watch a trap
    fire live, put prose inside the `Lease-until` cell of a **live** row in your own

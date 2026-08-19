@@ -430,7 +430,7 @@ def load_hook():
 
 def test_oversized_board_keeps_the_live_entry_that_truncation_would_lose(tmp_path):
     # THE measured defect: cutting by file position dropped every live entry on a real
-    # 77-entry board. Ranking by Class must keep the live one even when it is last.
+    # real working board. Ranking by Class must keep the live one even when it is last.
     #
     # Every filler here is WAITING — i.e. KEPT, not dropped — so the live entry can only
     # survive if the digest RANKS. An earlier version of this test used DONE fillers, which
@@ -657,9 +657,14 @@ def test_dangling_needs_all_four_conditions(tmp_path):
         "last_active": (NOW - timedelta(minutes=5)).isoformat(timespec="seconds")}}))
     assert closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW) == []
 
-    # (b) gone BUT it wrote itself into ## Log -> the record stands, nothing dangles
+    # (b) gone BUT it wrote itself into ## Log -> the record stands, nothing dangles.
+    # NOTE: this must be a real BYLINE. It used to say "s-worker-0001 closed" in the entry body,
+    # which passed only because logged() matched anywhere in the Log — the bug that let a
+    # session be marked logged by being MENTIONED (2026-08-19).
     beats.write_text(json.dumps({"s-worker-0001": {"last_active": gone}}))
-    w2 = workspace(tmp_path, diary=DIARY_NO_ENTRY.replace("somebody else", "s-worker-0001 closed"),
+    w2 = workspace(tmp_path,
+                   diary=DIARY_NO_ENTRY.replace("### 2026-01-09 — somebody else",
+                                                "### 2026-01-09 — [Model-1] (session `s-worker-0001`) closed out"),
                    notebook_session="s-worker-0001")
     assert closeout.dangling(w2 / "CLAIMS.md", w2 / "notebooks", w2 / "DIARY.md", beats, NOW) == []
 
@@ -974,3 +979,52 @@ def test_operator_report_carries_the_boards_own_errors(tmp_path):
     # ...and a clean board must not raise it
     w2 = board(tmp_path, claims=CLAIMS_LIVE)
     assert "claims-structural-error" not in [i["code"] for i in operator_report.audit(w2, "s-worker-0001", NOW)]
+
+
+def test_being_named_by_another_session_is_not_logging(tmp_path):
+    """★ REGRESSION (2026-08-19): logged() matched the id ANYWHERE in `## Log`, so the moment a
+    session wrote "these sessions left work behind", their ids were in the Log and the next run
+    judged them logged and said nothing. A check silenced by being reported looks like the
+    problem went away."""
+    named = DIARY_NO_ENTRY.replace(
+        "### 2026-01-09 — somebody else",
+        "### 2026-01-09 — [Model-1] (session `s-auditor-9`) — s-worker-0001 left work behind")
+    w = workspace(tmp_path, diary=named, notebook_session="s-worker-0001")
+    beats = tmp_path / "hb.json"
+    beats.write_text(json.dumps({"s-worker-0001": {
+        "last_active": (NOW - timedelta(hours=9)).isoformat(timespec="seconds")}}))
+    found = closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW)
+    assert [d["session"] for d in found] == ["s-worker-0001"]
+
+
+def test_the_id_forms_in_the_real_sources_disagree_and_that_is_the_seam(tmp_path):
+    """★ THE BUG A GREEN SUITE COULD NOT SEE, because every fixture used the same id in both
+    files. Real sources disagree: a heartbeat store holds whatever id the harness hands it —
+    often a long uuid — while a diary byline carries a short prefix and a notebook may carry
+    either. logged() compared the FULL id against the Log, never matched, and reported three
+    false positives on a healthy production board. The disagreement now lives in the fixture."""
+    full = "s-worker-0001-aaaa-bbbb-cccc-dddddddddddd"
+    claims = CLAIMS_LIVE.replace("s-worker-0001", full)          # CLAIMS: the long id
+    diary = DIARY_NO_ENTRY.replace(                              # DIARY: the short byline
+        "### 2026-01-09 — somebody else",
+        "### 2026-01-09 — [Model-1] (session `s-worker`) — closed out properly")
+    w = workspace(tmp_path, claims=claims, diary=diary, notebook_session="s-worker")  # notebook: short
+    beats = tmp_path / "hb.json"
+    beats.write_text(json.dumps({full: {
+        "last_active": (NOW - timedelta(hours=9)).isoformat(timespec="seconds")}}))
+    found = closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW)
+    assert found == [], f"a session that logged under a SHORT byline must not be called dangling: {found}"
+
+
+def test_one_session_under_two_id_forms_is_reported_once(tmp_path):
+    """★ REGRESSION: CLAIMS held the full id and the notebook the short one, so the same session
+    was reported TWICE — as if two had walked off instead of one."""
+    full = "s-worker-0001-aaaa-bbbb-cccc-dddddddddddd"
+    w = workspace(tmp_path, claims=CLAIMS_LIVE.replace("s-worker-0001", full),
+                  notebook_session="s-worker")
+    beats = tmp_path / "hb.json"
+    beats.write_text(json.dumps({full: {
+        "last_active": (NOW - timedelta(hours=9)).isoformat(timespec="seconds")}}))
+    found = closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW)
+    assert len(found) == 1, f"one session, one finding: {found}"
+    assert found[0]["held_tracks"] and found[0]["notebooks"]   # both surfaces merged into it

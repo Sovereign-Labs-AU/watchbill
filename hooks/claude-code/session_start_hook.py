@@ -17,11 +17,11 @@ context budget:
     which carries title + Class + verified + waiting-on), RANKED LIVE-FIRST, with
     finished/parked entries dropped and counted.
 
-★ WHY THE RANKING IS NOT COSMETIC (measured 2026-08-18 against a real 77-entry board):
+★ WHY THE RANKING IS NOT COSMETIC (measured on a real working board, 2026-08-18):
 plain truncation cuts in FILE order, so what a fresh session sees is whatever happens to
-sit at the top of the file. On that board it emitted 4 entries of 77 — and ALL THREE
-live production runs were among the 73 it dropped. Truncation silently inverted the
-hook's whole purpose: the session was oriented by the least urgent thing on the board.
+sit at the top of the file. On that board it emitted **four** entries — and **every live
+one was among those it dropped**. Truncation silently inverted the hook's whole purpose:
+the session was oriented by the least urgent thing on the board.
 File order is authoring history; it is not priority. So when the board does not fit, cut
 by CLASS, never by position — and say how many were cut.
 

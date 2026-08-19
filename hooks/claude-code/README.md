@@ -82,10 +82,9 @@ Session-start loader (`session_start_hook.py`):
   cannot quietly push the whole emit over the limit.
 - **A board too large to inject whole is DIGESTED, not truncated**: one line per entry (its
   `### ` header — title, `Class:`, `verified:`, `waiting-on:`), ranked live-first, with
-  finished/parked entries dropped and *counted*. This is not cosmetic. Measured against a
-  real 77-entry board, plain file-order truncation emitted 4 entries and dropped every one
-  of the three live production runs — orienting the session by the least urgent thing on
-  the board. File order is authoring history, not priority. A free-form board with no
+  finished/parked entries dropped and *counted*. This is not cosmetic. Measured on a real
+  working board, plain file-order truncation emitted **four** entries and dropped **every
+  live one** — orienting the session by the least urgent thing on the board. File order is authoring history, not priority. A free-form board with no
   `### ` entries still falls back to a loud truncation.
 - If `scripts/waiting_on.py` is present, the loader appends one line naming any blocker
   `## NOW` still asks about that `## Log` has already ruled — the ruling lives in the

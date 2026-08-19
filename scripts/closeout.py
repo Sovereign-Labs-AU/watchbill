@@ -32,6 +32,7 @@ Usage:
 Exit codes: 0 nothing owed · 1 obligations or dangling sessions found · 2 could not read.
 """
 import argparse
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -99,10 +100,33 @@ def notebooks_for(notebooks_dir, session=None):
     return out
 
 
+# `### 2026-01-11 — [Vendor Model-1] (session `s-demo-0001`) — …`: the AUTHOR's id sits in the
+# byline at the front of the heading. Everything after that is prose, including one session
+# naming another.
+BYLINE_CHARS = 110
+SHORT_ID = 8        # the form a diary byline realistically carries
+
+
 def logged(diary_path, session):
-    """Did this session write itself into `## Log`? The diary convention tags entries with the
-    session id, so this is a real signal — and a deliberately weak one: it proves an entry
-    exists, never that it was a good entry. No instrument can check that."""
+    """Did this session WRITE an entry in `## Log`?
+
+    ★ TWO BUGS LIVED HERE, both found only by running it against a REAL board (2026-08-19):
+
+    1. IT MATCHED THE FULL SESSION ID. Heartbeat stores hold the id a harness hands them —
+       often a long uuid — while a diary byline realistically carries a short prefix. Full id
+       never appears, so EVERY session read as "never logged" and the check reported three
+       false positives on a healthy board. Every fixture had used the same id in both places,
+       so a green suite could not see it: synthetic data is consistent by construction, and the
+       bug lives in the seam it papers over. Now compared on the short prefix.
+
+    2. IT MATCHED ANYWHERE IN `## Log`, so LOGGING A FINDING ERASED IT — the moment a session
+       wrote "these sessions left work behind", their ids were in the Log and the next run
+       judged them logged. A check silenced by being reported looks like the problem went away.
+       Now only a `### ` heading's BYLINE counts, because an entry may run its whole body on
+       the heading line.
+
+    Still deliberately weak in the other direction: it proves an entry exists, never that it
+    was a good one. No instrument can check that."""
     try:
         text = Path(diary_path).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -110,7 +134,12 @@ def logged(diary_path, session):
     idx = text.find("\n## Log")
     if idx == -1:
         return False
-    return session in text[idx:]
+    sid = re.escape((session or "")[:SHORT_ID])
+    if not sid:
+        return False
+    pat = re.compile(r"\(session\s*`?" + sid + r"|\[[^\]]*`" + sid)
+    return any(pat.search(ln[:BYLINE_CHARS])
+               for ln in text[idx:].splitlines() if ln.startswith("### "))
 
 
 def check(session, claims_path, notebooks_dir, diary_path, now):
@@ -139,7 +168,20 @@ def dangling(claims_path, notebooks_dir, diary_path, beats_path, now):
     for p, sid in notebooks_for(notebooks_dir):
         if sid:
             open_books.setdefault(sid, []).append(str(p))
-    for sess in sorted(set(held) | set(open_books)):
+    # ★ CANONICALISE FIRST. `CLAIMS.md` may record a full session id while a notebook records a
+    # short prefix, so the same session arrives under two keys and would be reported twice — as
+    # if two sessions had walked off instead of one. Group on the short prefix, keeping the
+    # longest id seen for the heartbeat join.
+    merged = {}
+    for src, key in ((held, "held_tracks"), (open_books, "notebooks")):
+        for sess, vals in src.items():
+            short = sess[:SHORT_ID]
+            merged.setdefault(short, {"held_tracks": [], "notebooks": [], "full": sess})
+            merged[short][key].extend(vals)
+            if len(sess) > len(merged[short]["full"]):
+                merged[short]["full"] = sess
+    for short in sorted(merged):
+        sess = merged[short]["full"]
         last = next((v for k, v in beats.items() if joins(k, sess)), None)
         if last is None:
             continue                                   # never had a pulse — not our call
@@ -151,8 +193,8 @@ def dangling(claims_path, notebooks_dir, diary_path, beats_path, now):
         out.append({
             "session": sess,
             "idle_minutes": int(idle),
-            "held_tracks": held.get(sess, []),
-            "notebooks": open_books.get(sess, []),
+            "held_tracks": merged[short]["held_tracks"],
+            "notebooks": merged[short]["notebooks"],
         })
     return out
 

@@ -147,6 +147,17 @@ mutate "URL in a Globs cell no longer errors" "scripts/watchbill_check.py" \
 mutate "the URL check swallows ordinary file globs" "scripts/watchbill_check.py" \
   '        if table == "tracks" and entries and all(URLISH.match(e) for e in entries):' \
   '        if table == "tracks" and entries:'
+mutate "session start stops naming structural CLAIMS errors" "$HOOK" \
+  '        if not errors:
+            return ""' '        return ""
+        if not errors:
+            return ""'
+mutate "the claims notice fires on FLAGs too (noise)" "$HOOK" \
+  '        errors, _flags, _report = audit(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"))' \
+  '        errors, _flags, _report = audit(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"))
+        errors = errors + _flags'
+mutate "operator report drops the board's own errors" "$OR" \
+  '        if errs:' '        if False:'
 mutate "notebook board flags every session" "$NB" \
   '        if any(joins(sid, s) for s in sessions_on_board):
             continue' '        pass'

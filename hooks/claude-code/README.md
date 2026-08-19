@@ -91,6 +91,10 @@ Session-start loader (`session_start_hook.py`):
   `## NOW` still asks about that `## Log` has already ruled — the ruling lives in the
   section nobody loads at session start, so it has to be carried forward mechanically.
   Missing script, or any error in it, and the loader simply omits that line.
+- It also names **structural errors in `CLAIMS.md`** (errors only — standing flags are the
+  normal state of a live board and repeating them would bury the line). The checker otherwise
+  runs only when somebody remembers to run it, so an error made by a session that never touches
+  claims code sits unread while the row protects nothing and looks protected.
 
 Close-out reminder (`stop_hook.py`):
 - It speaks only when the session actually owes something: a live lease in its name, or an

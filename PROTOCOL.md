@@ -121,7 +121,12 @@ source of truth for its domain. When you create a new ledger, add a pointer line
    **digested, not truncated**: one line per entry, ranked live-first by `Class:` (§1.2),
    finished entries dropped and counted. Cutting by file position instead of class is how a
    loader ends up hiding the only three entries that mattered — measured, and the reason the
-   ranking exists.
+   ranking exists. The loader also names anything the board itself is carrying that nobody is
+   reading: waiting-on clauses the Log has already ruled (§1.2), sessions that left work behind
+   (§2.6), and **structural errors in `CLAIMS.md`** — errors only, because a live board always
+   carries standing flags and repeating those at every start is noise. A malformed row protects
+   nothing while looking protected, and until now nothing reported one unless somebody happened
+   to run the checker.
 2. **Check CLAIMS** — live lease held by another session on your target? STOP, ask the
    Operator. Otherwise **claim**.
 3. **Open your notebook** — objectives before work.
@@ -244,7 +249,9 @@ still happening**:
 - items past the 72 h rule (§1.2) that are not flagged STALE — a board asserting freshness it
   does not have;
 - work with nothing written down at all;
-- a lease about to lapse, while renewing is still a choice.
+- a lease about to lapse, while renewing is still a choice;
+- **structural errors in `CLAIMS.md` itself** — enforcement disarmed on those rows, made by any
+  session, reported to the one person who can rule on somebody else's row.
 
 **It is advisory and it never blocks.** What makes it worth having is the AUDIENCE, not the
 enforcement: this file's own line is that the protocol does not police, it makes violations

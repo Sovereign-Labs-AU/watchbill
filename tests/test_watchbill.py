@@ -928,3 +928,49 @@ def test_ordinary_globs_and_hosts_are_never_flagged(tmp_path):
     and a noisy checker is one nobody reads."""
     errors, flags, _ = audit(FIX / "claims_clean.md", beats_file(tmp_path, ["s-live-0001"]), NOW)
     assert errors == [] and flags == []
+
+
+# ================================================================ the board's own errors get a reader
+BROKEN_CLAIMS = (
+    "| Track | Globs | Owner | Session | Agent | Claimed | Lease-until | Task |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+    "| t | src/** | Human | s-live-0001 | Model-1 | 2026-01-09 | when the sprint ends | LIVE |\n")
+
+
+def test_session_start_names_structural_claims_errors(tmp_path):
+    """The gap: the checker is run by whoever remembers, plus a pre-commit hook that only fires
+    for commits touching claims code — so an error made by a session that never touches it sits
+    unread, while the row protects nothing and looks protected. Measured: one sat a full day."""
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    (tmp_path / "CLAIMS.md").write_text(BROKEN_CLAIMS)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0013"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "STRUCTURAL ERROR" in ctx and "watchbill_check.py" in ctx
+    assert "Operator's call" in ctx      # naming it is not licence to rewrite another's row
+
+
+def test_session_start_is_silent_on_a_structurally_clean_board(tmp_path):
+    """MUST-NOT-FIRE, and the load-bearing half: ERRORS only. A live board carries standing
+    FLAGs — expired leases, releases pending a decision — and repeating those every session
+    start is noise, after which the line is ignored entirely."""
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    (tmp_path / "CLAIMS.md").write_text(FIX.joinpath("claims_expired.md").read_text())  # FLAGs, no ERRORs
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0014"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "STRUCTURAL ERROR" not in ctx
+
+
+def test_session_start_survives_having_no_claims_file_at_all(tmp_path):
+    # Fail-open: a repo mid-adoption has a diary and no CLAIMS.md yet.
+    (tmp_path / "DIARY.md").write_text(NOW_DIARY)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-start-0015"}, tmp_path)
+    assert r.returncode == 0 and "STRUCTURAL ERROR" not in r.stdout
+
+
+def test_operator_report_carries_the_boards_own_errors(tmp_path):
+    w = board(tmp_path, claims=BROKEN_CLAIMS)
+    codes = [i["code"] for i in operator_report.audit(w, "s-worker-0001", NOW)]
+    assert "claims-structural-error" in codes
+    # ...and a clean board must not raise it
+    w2 = board(tmp_path, claims=CLAIMS_LIVE)
+    assert "claims-structural-error" not in [i["code"] for i in operator_report.audit(w2, "s-worker-0001", NOW)]

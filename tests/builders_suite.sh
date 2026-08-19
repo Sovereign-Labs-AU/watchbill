@@ -141,6 +141,12 @@ mutate "operator hook starts blocking the agent" "hooks/claude-code/operator_hoo
             print(out)' '        out = r.stdout.strip()
         if out:
             print(out.replace("{", "{\"decision\": \"block\", ", 1))'
+mutate "URL in a Globs cell no longer errors" "scripts/watchbill_check.py" \
+  '        if table == "tracks" and entries and all(URLISH.match(e) for e in entries):' \
+  '        if False:'
+mutate "the URL check swallows ordinary file globs" "scripts/watchbill_check.py" \
+  '        if table == "tracks" and entries and all(URLISH.match(e) for e in entries):' \
+  '        if table == "tracks" and entries:'
 mutate "notebook board flags every session" "$NB" \
   '        if any(joins(sid, s) for s in sessions_on_board):
             continue' '        pass'
@@ -224,7 +230,8 @@ NOW = datetime(2026, 1, 10, 12, 0)
 beats = Path("/tmp/.wb_builders_beats.json")
 beats.write_text(json.dumps({"s-live-0001": {
     "last_active": (NOW - timedelta(minutes=5)).isoformat(timespec="seconds")}}))
-MUST_CATCH = {"claims_broken_lease.md", "claims_malformed_row.md", "claims_expired.md"}
+MUST_CATCH = {"claims_broken_lease.md", "claims_malformed_row.md", "claims_expired.md",
+              "claims_wrong_table.md"}
 bad = 0
 for f in sorted(Path("tests/fixtures").glob("*.md")):
     errors, flags, _ = audit(f, beats, NOW)

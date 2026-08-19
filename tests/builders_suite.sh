@@ -158,6 +158,14 @@ mutate "the claims notice fires on FLAGs too (noise)" "$HOOK" \
         errors = errors + _flags'
 mutate "operator report drops the board's own errors" "$OR" \
   '        if errs:' '        if False:'
+mutate "logged() compares the FULL id again (the false-positive bug)" "$CO" \
+  '    sid = re.escape((session or "")[:SHORT_ID])' '    sid = re.escape(session or "")'
+mutate "logged() is a bare substring search again (self-erasing)" "$CO" \
+  '    return any(pat.search(ln[:BYLINE_CHARS])
+               for ln in text[idx:].splitlines() if ln.startswith("### "))' \
+  '    return sid.replace("\\\\", "") in text[idx:]'
+mutate "one session under two id forms is reported twice again" "$CO" \
+  '            short = sess[:SHORT_ID]' '            short = sess'
 mutate "notebook board flags every session" "$NB" \
   '        if any(joins(sid, s) for s in sessions_on_board):
             continue' '        pass'

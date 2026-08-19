@@ -26,11 +26,11 @@ shows was made. That is the whole check.
 the machine-readable layer, so a conclusion baked into a name is one you will keep re-reading
 as fact. Prefer `-ruling`, `-call`, `-triage` over any word that states an outcome.
 
-WHY NOT DETECT THIS FROM THE PROSE: measured against a live 700-line board. Checking whether
-file paths named in `## NOW` still exist flagged 204 of 341 candidates on the whole section and
-53 on live entries alone — nearly all false (dataset ids, git ranges, remote paths, domains,
-`file.py:23` refs, scripts living on other machines) — and cost a 19-second tree walk, far too
-slow for a session-start hook. A check that noisy gets routed around. Prose cannot be read
+WHY NOT DETECT THIS FROM THE PROSE: measured against a live working board. Checking whether
+file paths named in `## NOW` still exist flagged **60% false positives** across the whole
+section, and on live entries alone **nearly every hit was false** — dataset ids, git ranges,
+remote paths, domains, `file.py:23` refs, scripts living on other machines — at a cost of a
+**19-second** tree walk, far too slow for a session-start hook. A check that noisy gets routed around. Prose cannot be read
 reliably; an explicit token can, and comparing only tokens you were handed cannot misread
 anything.
 

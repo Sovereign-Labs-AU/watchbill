@@ -430,7 +430,7 @@ def load_hook():
 
 def test_oversized_board_keeps_the_live_entry_that_truncation_would_lose(tmp_path):
     # THE measured defect: cutting by file position dropped every live entry on a real
-    # 77-entry board. Ranking by Class must keep the live one even when it is last.
+    # real working board. Ranking by Class must keep the live one even when it is last.
     #
     # Every filler here is WAITING — i.e. KEPT, not dropped — so the live entry can only
     # survive if the digest RANKS. An earlier version of this test used DONE fillers, which

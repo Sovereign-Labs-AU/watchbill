@@ -88,8 +88,8 @@ Two sections:
   A slug open in `## NOW` **and** resolved in `## Log` is a contradiction: the board still
   asks for a decision the record shows was made. `scripts/waiting_on.py` finds it, and the
   session-start loader tells every new session the ask is already settled. **Why it is
-  needed:** `## Log` is never loaded at session start — only `## NOW` is — so a banked ruling
-  does not reach a fresh session, and a settled ask keeps asking. Opt-in and forward-only:
+  needed:** the session-start loader carries `## NOW` and only the few NEWEST `## Log` headers
+  (§2.1), so an older ruling does not reach a fresh session, and a settled ask keeps asking. Opt-in and forward-only:
   untagged clauses behave exactly as before, and **re-opening a settled blocker needs a NEW
   slug** (the check compares sets, not timelines). ★ **Name the decision, never the answer** —
   a slug outlives the prose around it, so `-ruling` / `-call` / `-triage`, never a word that
@@ -117,7 +117,14 @@ source of truth for its domain. When you create a new ledger, add a pointer line
 1. **Orient** — read `DIARY.md ## NOW`. Re-stamp what you verify; flag stale items. On
    Claude Code this step is machine-enforced: the SessionStart hook injects `## NOW` into
    context before the first tool call (`hooks/claude-code/session_start_hook.py`), so the
-   board is read from the tree, not from memory. A board too large to inject whole is
+   board is read from the tree, not from memory. It also carries the **newest few `## Log` entry
+   headers, by date** — because a fact recorded only in the Log (a host retired, a folder frozen)
+   otherwise never reaches a fresh session. Measured in a sandboxed test of this protocol: without
+   them, sessions acted against such a fact every time; with them, they found it and worked from
+   it, including a fact that shared no word with the task and so could not be found by grepping the
+   diary for the task's keywords. *Newest by date, not last in file*: most Logs are written
+   newest-first, but some writers append at the bottom, and "the last entries in the file" then
+   returns the oldest. A board too large to inject whole is
    **digested, not truncated**: one line per entry, ranked live-first by `Class:` (§1.2),
    finished entries dropped and counted. Cutting by file position instead of class is how a
    loader ends up hiding the only three entries that mattered — measured, and the reason the

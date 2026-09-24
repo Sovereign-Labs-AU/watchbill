@@ -156,6 +156,11 @@ mutate "the claims notice fires on FLAGs too (noise)" "$HOOK" \
   '        errors, _flags, _report = audit(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"))' \
   '        errors, _flags, _report = audit(Path("CLAIMS.md"), Path(".watchbill/heartbeats.json"))
         errors = errors + _flags'
+mutate "session start carries ## NOW alone again (Log-only facts never reach a session)" "$HOOK" \
+  '    return ("RECENT `## Log` (newest first' '    return ""
+    return ("RECENT `## Log` (newest first'
+mutate "recent Log picks the LAST headers in the file again, not the newest by date" "$HOOK" \
+  '    dated.sort(reverse=True)' '    dated.sort(key=lambda t: t[1])'
 mutate "operator report drops the board's own errors" "$OR" \
   '        if errs:' '        if False:'
 mutate "logged() compares the FULL id again (the false-positive bug)" "$CO" \

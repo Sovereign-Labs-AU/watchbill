@@ -173,6 +173,7 @@ NOW_DIARY = (
     "- The one live fact the next session must not miss.\n\n"
     "## Log\n\n"
     "### 2026-01-10 — [Demo] — must NOT leak into the injected board.\n"
+    "- A Log BODY line: never injected, only headers are.\n"
 )
 
 
@@ -188,7 +189,12 @@ def test_session_start_injects_now_block(tmp_path):
     assert hso["hookEventName"] == "SessionStart"
     ctx = hso["additionalContext"]
     assert "The one live fact the next session must not miss." in ctx
-    assert "must NOT leak into the injected board." not in ctx   # stops at ## Log
+    # The BOARD stops at ## Log. Since the recent-Log block (newest Log HEADERS, labelled), the
+    # header may appear, but ONLY inside that block, never as if it were live board state.
+    board, _, recent = ctx.partition("RECENT `## Log`")
+    assert "must NOT leak into the injected board." not in board
+    assert "must NOT leak into the injected board." in recent
+    assert "A Log BODY line" not in ctx                          # headers only, never bodies
     assert "PROTOCOL.md" in ctx                                  # ritual reminder rides along
 
 
@@ -1028,3 +1034,63 @@ def test_one_session_under_two_id_forms_is_reported_once(tmp_path):
     found = closeout.dangling(w / "CLAIMS.md", w / "notebooks", w / "DIARY.md", beats, NOW)
     assert len(found) == 1, f"one session, one finding: {found}"
     assert found[0]["held_tracks"] and found[0]["notebooks"]   # both surfaces merged into it
+
+
+# ── RECENT `## Log` at session start ──────────────────────────────────────────────────────────────
+# A fact recorded only in `## Log` never reached a fresh session while this loader carried `## NOW`
+# alone; sessions acted against it every time. The newest Log headers now ride along, by DATE.
+
+MIXED_LOG_DIARY = (
+    "# Diary\n\n## NOW\n\n"
+    "### build-track — Class: ACTIVE. verified: 2026-03-05 · waiting-on: —\n- run the nightly job\n\n"
+    "## Log\n\n"
+    # newest-first at the top, as most writers do …
+    "### 2026-03-05 — [a] — nightly job moved to the new-box host; old-box is retired\n- body\n"
+    "### 2026-03-04 — [b] — tuned the cache\n"
+    "### 2026-03-03 — [c] — rotated a key\n"
+    "### 2026-02-01 — [d] — ancient history one\n"
+    "### 2026-01-15 — [e] — ancient history two\n"
+    "### Undated note with no date at all\n"
+    # … but one writer appended at the BOTTOM: the disagreement real boards carry
+    "### 2026-03-04 — [f] — appended at the bottom by a writer who reads 'append' literally\n"
+)
+
+
+def test_recent_log_carries_a_fact_that_lives_only_in_the_log(tmp_path):
+    """MUST-CATCH: the retired host is nowhere in `## NOW`; only the Log says so."""
+    (tmp_path / "DIARY.md").write_text(MIXED_LOG_DIARY)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-recent-0001"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "RECENT `## Log`" in ctx and "old-box is retired" in ctx
+
+
+def test_recent_log_is_newest_by_DATE_not_last_in_file():
+    """The bottom-appended 03-04 entry must be shown, and the two ancient ones must NOT: 'the last n
+    headers in the file' would have picked exactly the wrong ones on a newest-first board."""
+    ssh = load_hook()
+    r = ssh.recent_log(MIXED_LOG_DIARY, n=4)
+    assert "appended at the bottom" in r and "old-box is retired" in r
+    assert "ancient history" not in r
+    assert r.index("old-box is retired") < r.index("tuned the cache"), "newest first"
+
+
+def test_recent_log_stays_quiet_where_it_must():
+    """MUST-NOT-FIRE: no Log → no block (a board without a Log must not grow an empty heading);
+    undated headers are never guessed into the ranking; Log BODIES are never injected."""
+    ssh = load_hook()
+    assert ssh.recent_log("# D\n\n## NOW\n\n### t — Class: ACTIVE\n") == ""
+    r = ssh.recent_log(MIXED_LOG_DIARY, n=10)
+    assert "Undated note" not in r and "- body" not in r
+
+
+def test_recent_log_never_pushes_the_emit_over_the_inline_limit(tmp_path):
+    """A huge Log with very long headers must still leave the WHOLE emit under the harness limit:
+    the block is budgeted like every other appended notice, and clamp() is the last word."""
+    ssh = load_hook()
+    log = "".join(f"### 2026-03-{(i % 28) + 1:02d} — " + "y" * 900 + "\n" for i in range(400))
+    (tmp_path / "DIARY.md").write_text(big_board(n_finished=60) + log)
+    r = run_hook_cwd("session_start_hook.py", {"session_id": "s-recent-0002"}, tmp_path)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert len(ctx) < ssh.INLINE_LIMIT - ssh.SAFETY_MARGIN
+    # digest mode shows HEADERS only, so the live entry is proven by its header, not its bullet
+    assert "RECENT `## Log`" in ctx and "the-live-run" in ctx

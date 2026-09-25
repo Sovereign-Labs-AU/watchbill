@@ -46,6 +46,7 @@ INLINE_LIMIT = 10000
 SAFETY_MARGIN = 200      # JSON escaping and multi-byte characters cost more than len() shows
 MAX_CHARS = 9000         # hard cap on the body, whatever the preamble leaves room for
 HEADER_CAP = 170         # per-entry header truncation in digest mode
+RECENT_LOG = 5           # newest `## Log` entry headers shown at session start (by DATE)
 
 # `### Some track — … Class: ACTIVE. verified: … · waiting-on: …`
 CLASS_RE = re.compile(r"Class:\s*([^.·|]*)", re.IGNORECASE)
@@ -232,6 +233,39 @@ def claims_errors_notice():
         return ""
 
 
+def recent_log(diary_text, n=RECENT_LOG):
+    """The `n` NEWEST `## Log` entry headers, by the date that opens each header; "" if none.
+
+    WHY: this loader used to carry `## NOW` alone, so a fact recorded only in `## Log` never
+    reached a fresh session. Measured in a sandboxed battle test of this protocol: with a fact
+    that lived only in the Log (a host retired, a folder frozen), sessions acted against it
+    every time. With the newest Log headers surfaced here, they found it and worked from it,
+    including a fact that shared no word with the task, which a session grepping the diary
+    for its task's keywords would never have hit.
+
+    NEWEST BY DATE, NOT LAST IN FILE: a working Log is usually newest-first, but some writers
+    append at the bottom. "The last n headers in the file" then returns months-old entries
+    while today's sits at the top, which was measured on a real board. Ties keep file order;
+    undated headers are skipped. Line-anchored on the FIRST `## Log` heading."""
+    m = re.search(r"^## Log\b.*$", diary_text, re.M)
+    if not m:
+        return ""
+    dated = []
+    for pos, h in enumerate(re.findall(r"^### (.+)$", diary_text[m.end():], re.M)):
+        d = re.match(r"\W{0,4}(\d{4}-\d{2}-\d{2})", h.strip())
+        if d:
+            dated.append((d.group(1), -pos, h))
+    dated.sort(reverse=True)            # newest date first; within a date, earlier in file first
+    lines = []
+    for _, _, h in dated[:n]:
+        h = h.replace("**", "").strip()
+        lines.append("• " + (h[:HEADER_CAP].rstrip() + "…" if len(h) > HEADER_CAP else h))
+    if not lines:
+        return ""
+    return ("RECENT `## Log` (newest first — facts banked here can supersede `## NOW` and your "
+            "memory; read the entry before acting on anything it touches):\n" + "\n".join(lines))
+
+
 PREAMBLE_WHOLE = (
     "SESSION-START RITUAL (Watchbill PROTOCOL.md §2, non-negotiable): the live state of "
     "play from this repo's `DIARY.md` `## NOW` is below. Read it before acting — do not "
@@ -304,8 +338,8 @@ def main():
         now = extract_now(text)
         if not now:
             return 0  # no ## NOW block to load
-        context = build_context(now, stale_waiting_on(text), dangling_notice(),
-                                claims_errors_notice())
+        context = build_context(now, recent_log(text), stale_waiting_on(text),
+                                dangling_notice(), claims_errors_notice())
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",

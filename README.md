@@ -45,7 +45,7 @@ keeps no state.
 | `INDEX.md` | The front door: pointers only, no data of its own. |
 | *the relay* | Ephemeral agent-to-agent messages: work orders, receipts, handbacks. **Carries work, never truth** — nothing is true until an owning agent writes it into a ledger. |
 
-Plus the checkers: a claims auditor, an ownership guard, a heartbeat, a notebook board, a
+Plus the checkers: a claims auditor, a lane gate (a `## NOW` entry is born with its markers), an ownership guard, a heartbeat, a notebook board, a
 close-out check, a waiting-on reconciler, and one report written for the Operator rather than
 the agent that catches a blocker the log has already settled — shipped with a
 test suite whose fixtures are real production traps, built to prove the instruments **catch
@@ -118,8 +118,8 @@ Watchbill's paths are repo-root-relative). `$WATCHBILL` is wherever you cloned t
    from the Watchbill source checkout by mistake — because an earlier version, run from
    there, silently protected the wrong repo while printing success.
 
-3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `86 passed` in the Watchbill checkout, `84 passed, 2 skipped`
-   in your repo (the skip is the template-source check, which lives only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
+3. **Prove the install**: `python3 -m pytest tests/` — the suite must **pass** — `92 passed` in the Watchbill checkout, `89 passed, 3 skipped`
+   in your repo (the skips are checks of Watchbill's own templates and README, which live only in the checkout). Passing means the checker *caught* every must-be-caught fixture — the
    shipped traps are supposed to be caught, not to turn your suite red. To watch a trap
    fire live, put prose inside the `Lease-until` cell of a **live** row in your own
    `CLAIMS.md` — claim a track first, since the shipped rows are all released examples and

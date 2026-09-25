@@ -162,8 +162,8 @@ def build_digest(headers, finished, budget):
 def stale_waiting_on(diary_text):
     """One line naming `## NOW` blockers that `## Log` has already ruled — empty when clean.
 
-    `## Log` is never loaded at session start, so a ruling banked there does not reach a
-    fresh session; only `## NOW` does. Defensive by construction: any failure returns ""
+    Only the newest few `## Log` entries reach a fresh session (recent_log), so an OLDER ruling
+    banked there does not; `## NOW` does. Defensive by construction: any failure returns ""
     so the digest still ships — this is an extra, never a dependency."""
     try:
         here = str(Path(__file__).resolve().parents[2] / "scripts")

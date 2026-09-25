@@ -3,8 +3,8 @@
 
 THE FAILURE THIS EXISTS FOR (production, 2026-08):
 a track's NOW entry read `waiting-on: Operator to rule bin/keep on the throwaway scan files`.
-The Operator ruled — bin nothing — and the ruling was written into `## Log`. But `## Log` is
-never loaded at session start; only `## NOW` is. So the answer sat in the file nobody reads
+The Operator ruled — bin nothing — and the ruling was written into `## Log`. But `## Log` was
+not loaded at session start then; only `## NOW` was (the loader now carries only its newest few entries). So the answer sat in the file nobody reads
 and the stale instruction sat in the file everybody reads — and the stale instruction said
 "bin", pointing at what turned out to be an irreplaceable three-month baseline held in two
 copies with no offsite. Its owner struck it within a day. The failure mode is when nobody does.

@@ -20,8 +20,9 @@
   ### 2026-01-11 — [Vendor Model-1] RULED: 90 days {RULED:retention-window-ruling}
   ```
 
-  `scripts/waiting_on.py` then reports this ask as settled — because `## Log` is never loaded
-  at session start, and without the token the board keeps asking a question already answered.
+  `scripts/waiting_on.py` then reports this ask as settled — because the session-start loader
+  carries only the newest few `## Log` entries, so an older ruling does not reach a fresh
+  session, and without the token the board keeps asking a question already answered.
 
 ## Log
 

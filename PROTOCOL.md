@@ -76,6 +76,16 @@ Two sections:
   a move to `## Log`. No Class means *unknown*, which is treated as possibly-live: liveness
   is never guessed from the prose.
 
+  **An entry is born with its markers.** A NEW or EDITED entry (its heading text is not in the
+  last commit) must carry BOTH `Class:` and `waiting-on:`, in the heading or a bullet beneath it.
+  `scripts/lane_gate.py` enforces this at commit time (the pre-commit hook runs it whenever
+  `DIARY.md` is staged). Entries already committed are left alone and read as *unknown* until
+  someone touches them, so touch one and you mark it: a board adopting Watchbill mid-flight is
+  not blocked until it is backfilled whole. **Why:** measured on a real working board, the
+  markers were an agreed convention and never enforced, and about half the entries ended up with
+  none. Every tool that drains the board reads those markers, so the unmarked half could not
+  drain by construction, and each sweep reported green about the half it could see.
+
   **Waiting-on tokens — tag a blocker so its ruling can strike it.** When a `waiting-on:`
   needs someone else's decision, give it a slug; put the SAME slug on the `## Log` entry that
   records the decision:
@@ -274,7 +284,9 @@ it protects nothing.
 ## 7. Honest scope
 
 This protocol is **advisory infrastructure with enforcement hooks**, not a sandbox. A
-determined or malfunctioning agent can ignore it. The close-out check (§2.6) is the clearest
+determined or malfunctioning agent can ignore it. The commit-time checks (the `CLAIMS.md` audit,
+the lane gate of §1.2) block only in a clone where `install_hooks.sh` has run, and
+`git commit --no-verify` bypasses them visibly. The close-out check (§2.6) is the clearest
 case of the limit and of the design response: a session that crashes cannot be reminded of
 anything, so the reminder is only half the fix and the other half assumes it will fail. What you buy: visible ownership,
 authorized handoff, violations that show up, and an append-only record that makes

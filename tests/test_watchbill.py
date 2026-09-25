@@ -587,9 +587,10 @@ def test_readme_states_the_real_suite_size():
                 for f in sorted((ROOT / "tests").glob("test_*.py")))
     readme = (ROOT / "README.md").read_text()
     assert f"`{total} passed`" in readme, f"README must state `{total} passed` for the checkout"
-    # Two tests skip in an adopter repo: the template-source check and this one.
-    assert f"`{total - 2} passed, 2 skipped`" in readme, \
-        f"README must state `{total - 2} passed, 2 skipped` for an adopter repo"
+    # Three tests skip in an adopter repo: the template-source check, the lane gate's
+    # template check, and this one.
+    assert f"`{total - 3} passed, 3 skipped`" in readme, \
+        f"README must state `{total - 3} passed, 3 skipped` for an adopter repo"
 
 
 def test_release_gate_is_wired_only_in_the_source_checkout(tmp_path):
@@ -1094,3 +1095,77 @@ def test_recent_log_never_pushes_the_emit_over_the_inline_limit(tmp_path):
     assert len(ctx) < ssh.INLINE_LIMIT - ssh.SAFETY_MARGIN
     # digest mode shows HEADERS only, so the live entry is proven by its header, not its bullet
     assert "RECENT `## Log`" in ctx and "the-live-run" in ctx
+
+
+# ── LANE GATE: a `## NOW` entry is born with its markers (PROTOCOL.md §1.2) ─────────────────────
+import lane_gate  # noqa: E402
+
+BASE_BOARD = (
+    "# Diary\n\n## NOW\n\n"
+    "### legacy-entry — written before the gate existed, no markers at all\n- still here\n\n"
+    "### marked-in-heading — Class: ACTIVE. verified: 2026-03-01 · waiting-on: —\n- fine\n\n"
+    "## Log\n\n### 2026-03-01 — an unmarked Log heading, which the gate must never read\n"
+)
+
+
+def test_lane_gate_blocks_a_NEW_entry_without_markers(tmp_path):
+    """MUST-CATCH: the failure the gate exists for — an entry born without markers."""
+    new = BASE_BOARD.replace("## Log", "### fresh-entry — nothing marked here\n- a new fact\n\n## Log")
+    bad = lane_gate.unmarked_new(new, BASE_BOARD)
+    assert [h for h, _ in bad] == ["fresh-entry — nothing marked here"]
+    assert bad[0][1] == ["Class:", "waiting-on:"], "the message must name what is missing"
+    (tmp_path / "new.md").write_text(new); (tmp_path / "base.md").write_text(BASE_BOARD)
+    assert lane_gate.main(["--file", str(tmp_path / "new.md"), "--base", str(tmp_path / "base.md")]) == 1
+
+
+def test_lane_gate_needs_BOTH_markers():
+    new = BASE_BOARD.replace("## Log", "### half-marked — Class: ACTIVE\n\n## Log")
+    assert lane_gate.unmarked_new(new, BASE_BOARD) == [("half-marked — Class: ACTIVE", ["waiting-on:"])]
+
+
+def test_lane_gate_stays_quiet_where_it_must():
+    """MUST-NOT-FIRE. (1) The LEGACY unmarked entry is already committed: a board adopting the
+    protocol mid-flight must not be blocked until it is backfilled whole. (2) Markers in a BULLET
+    count; real boards carry them in either place. (3) Dated `### YYYY-MM-DD` notes inside
+    `## NOW` are Log-style notes, not entries. (4) `## Log` is never read."""
+    new = BASE_BOARD.replace("## Log", (
+        "### marked-in-a-bullet — the markers live below\n- Class: WAITING · waiting-on: the Operator\n\n"
+        "### 2026-03-02 — a dated note that drifted into NOW\n- no markers, and none owed\n\n"
+        "## Log")) + "### 2026-03-02 — another unmarked Log heading\n"
+    assert lane_gate.unmarked_new(new, BASE_BOARD) == []
+
+
+def test_lane_gate_an_EDITED_heading_counts_as_new():
+    """Touch it, mark it: an entry whose heading (where its state lives) was rewritten is exactly
+    the one to mark, and that is how a legacy board converges one edit at a time."""
+    new = BASE_BOARD.replace("legacy-entry — written before the gate existed, no markers at all",
+                             "legacy-entry — state changed today, still no markers")
+    assert [h for h, _ in lane_gate.unmarked_new(new, BASE_BOARD)] == ["legacy-entry — state changed today, still no markers"]
+
+
+def test_lane_gate_passes_the_shipped_template():
+    """The template an adopter starts from must itself pass the gate as a brand-new diary."""
+    if not (ROOT / "templates" / "DIARY.md").exists():
+        # An adopter copies the template in AS their DIARY.md; templates/ lives only in the
+        # Watchbill checkout. Reading it unconditionally turned the cold adopter's suite RED
+        # (caught by the builder's suite before this ever shipped).
+        pytest.skip("templates/ not present (adopter copy) — checked in the Watchbill source repo")
+    assert lane_gate.unmarked_new((ROOT / "templates" / "DIARY.md").read_text(), "") == []
+
+
+def test_lane_gate_reads_the_STAGED_blob_and_ignores_commits_without_DIARY(tmp_path):
+    """End to end in a real repo: the gate reads what is being COMMITTED, not the working tree,
+    and is silent when DIARY.md is not staged at all."""
+    import subprocess
+    run = lambda *c: subprocess.run(c, cwd=tmp_path, capture_output=True, text=True)
+    run("git", "init", "-q")
+    (tmp_path / "DIARY.md").write_text(BASE_BOARD)
+    run("git", "add", "DIARY.md"); run("git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "0")
+    gate = lambda: subprocess.run([sys.executable, str(ROOT / "scripts" / "lane_gate.py")],
+                                  cwd=tmp_path, capture_output=True, text=True).returncode
+    (tmp_path / "DIARY.md").write_text(BASE_BOARD.replace("## Log", "### unstaged-bad — no markers\n\n## Log"))
+    assert gate() == 0, "DIARY.md is modified but NOT staged: nothing is being committed"
+    run("git", "add", "DIARY.md")
+    assert gate() == 1, "now it is staged: the unmarked entry must block"
+    (tmp_path / "DIARY.md").write_text(BASE_BOARD)          # fix the WORKING TREE only …
+    assert gate() == 1, "… the staged blob is still bad, and the staged blob is what gets committed"

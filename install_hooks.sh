@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-clone hook install: the pre-commit check runs the claims audit + the test suite.
+# Per-clone hook install: the pre-commit check runs the claims audit, the lane gate + the test suite.
 #
 # RUN THIS FROM YOUR OWN REPO ROOT, after Quickstart step 1 has copied scripts/ and
 # tests/ into it. It refuses to run anywhere else — an earlier version silently
@@ -27,6 +27,10 @@ if [ -f CLAIMS.md ]; then
   python3 scripts/watchbill_check.py CLAIMS.md || {
     rc=$?; if [ "$rc" -ge 2 ]; then echo "watchbill: CLAIMS errors — commit blocked"; exit 1; fi
   }
+fi
+# A new or edited `## NOW` entry must carry Class: and waiting-on: (PROTOCOL.md §1.2).
+if [ -f scripts/lane_gate.py ] && git diff --cached --name-only | grep -qx 'DIARY.md'; then
+  python3 scripts/lane_gate.py || { echo "watchbill: an unmarked ## NOW entry — commit blocked"; exit 1; }
 fi
 python3 -m pytest tests/ -q || { echo "watchbill: test suite red — commit blocked"; exit 1; }
 # Watchbill's OWN checkout additionally runs the builder's suite (mutation + battle + adoption)

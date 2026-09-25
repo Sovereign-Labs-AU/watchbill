@@ -161,6 +161,15 @@ mutate "session start carries ## NOW alone again (Log-only facts never reach a s
     return ("RECENT `## Log` (newest first'
 mutate "recent Log picks the LAST headers in the file again, not the newest by date" "$HOOK" \
   '    dated.sort(reverse=True)' '    dated.sort(key=lambda t: t[1])'
+LG=scripts/lane_gate.py
+mutate "lane gate waves everything through" "$LG" \
+  '    bad = unmarked_new(new, base)' '    bad = []'
+mutate "lane gate ignores the baseline (legacy entries block every commit)" "$LG" \
+  '    known = {key(h) for h, _ in entries(base_diary or "")}' '    known = set()'
+mutate "lane gate stops requiring waiting-on:" "$LG" \
+  '(("Class:", CLASS), ("waiting-on:", WAITING))' '(("Class:", CLASS),)'
+mutate "lane gate reads the WORKING TREE instead of the staged blob" "$LG" \
+  'else git_show(":DIARY.md")' 'else Path("DIARY.md").read_text(encoding="utf-8")'
 mutate "operator report drops the board's own errors" "$OR" \
   '        if errs:' '        if False:'
 mutate "logged() compares the FULL id again (the false-positive bug)" "$CO" \
